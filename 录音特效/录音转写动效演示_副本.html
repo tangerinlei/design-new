@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>录音转写 · 交互动效演示</title>
+<style>
+  :root{
+    /* 全局缓动：ease-out */
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --blue-bar: #9ec3ff;
+    --accent: #2f6bff;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ width:100%; height:100%; background:#05070d; overflow:hidden; font-family:"PingFang SC","Microsoft YaHei",-apple-system,"Segoe UI",sans-serif; }
+
+  /* 舞台：固定 1920x1080，按窗口等比缩放 */
+  #viewport{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  #stage{
+    position:relative; width:1920px; height:1080px; transform-origin:center center;
+    overflow:hidden; border-radius:6px;
+    background:
+      radial-gradient(1200px 700px at 12% 88%, rgba(46,86,150,0.55), transparent 60%),
+      radial-gradient(1400px 600px at 92% 8%, rgba(40,72,130,0.45), transparent 55%),
+      linear-gradient(160deg, #16233f 0%, #101a30 42%, #0b1324 100%);
+    box-shadow:0 40px 120px rgba(0,0,0,0.6);
+  }
+  /* 背景斜向光弧 */
+  #stage::before{
+    content:""; position:absolute; left:-10%; bottom:-30%; width:120%; height:80%;
+    background:radial-gradient(60% 60% at 30% 50%, rgba(90,140,220,0.10), transparent 70%);
+    transform:rotate(-8deg); pointer-events:none;
+  }
+
+  /* ================= 顶部状态栏 ================= */
+  .topbar{ position:absolute; top:0; left:0; right:0; height:64px; display:flex; align-items:center; padding:0 32px; z-index:50; }
+
+  .rec-tag{
+    display:flex; align-items:center; gap:9px;
+    background:rgba(15,25,45,0.45); color:#fff; font-size:15px; font-weight:500; letter-spacing:.5px;
+    padding:8px 16px; border-radius:20px; backdrop-filter:blur(4px);
+  }
+  .rec-dot{ width:9px; height:9px; border-radius:50%; background:#ff4d5e; box-shadow:0 0 8px rgba(255,77,94,0.85); animation:recdot 1.3s ease-in-out infinite; }
+  @keyframes recdot{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.4; transform:scale(.8);} }
+  /* 暂停态：状态点变灰、停止闪烁 */
+  #stage.paused .rec-dot{ background:#8a92a3; box-shadow:none; animation:none; opacity:1; transform:scale(1); }
+
+  .title{ position:absolute; left:50%; top:0; height:64px; display:flex; align-items:center; transform:translateX(-50%); color:#d6deec; font-size:19px; letter-spacing:1px; font-weight:400; }
+
+  /* ================= 转写文本区（屏幕左右居中） ================= */
+  .transcript{
+    position:absolute; top:80px; left:50%; margin-left:-500px; width:1000px; bottom:262px;
+    padding-right:30px; overflow:hidden; z-index:20;
+    /* 文字按正常文档流从上往下排列生长，超出可视高度后由 .t-inner 的 transform 平滑跟随，
+       始终保持最新一行完整展示在底部、旧内容从顶部平滑淡出移出可视区 */
+    /* 展开动效：整块区域从右向左逐渐裁剪展开（clip-path 揭开），不做位移/回弹，避免弹跳感 */
+    -webkit-clip-path: inset(0 0 0 100%);
+    clip-path: inset(0 0 0 100%);
+    transition: clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-mask-image .3s var(--ease), mask-image .3s var(--ease);
+  }
+  #stage.transcribing .transcript{ -webkit-clip-path: inset(0 0 0 0%); clip-path: inset(0 0 0 0%); }
+  /* 文字未占满区域时不需要顶部渐隐；只有内容超出可视高度（真正需要裁剪）才启用顶部渐隐遮罩 */
+  .transcript.has-overflow{
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, rgba(0,0,0,1) 48px, rgba(0,0,0,1) 100%);
+    mask-image:linear-gradient(to bottom, transparent 0, rgba(0,0,0,1) 48px, rgba(0,0,0,1) 100%);
+  }
+  /* 内容整体从上往下走字：新内容始终在下方追加生长，超出容器高度时整体平滑向下"走"，
+     等效为可视窗口跟随最新文字向下滚动 */
+  .t-inner{ width:100%; transform:translateY(0); transition:transform .45s var(--ease); will-change:transform; }
+  .t-preface{ color:#aec3e6; font-size:19px; line-height:1.7; margin-bottom:22px; }
+  .t-seg{ margin-bottom:22px; transform:translateY(-14px); animation:segWalk .45s var(--ease) forwards; }
+  @keyframes segWalk{ to{ transform:translateY(0); } }
+  .t-time{ color:#7d8aa3; font-size:15px; margin-bottom:6px; }
+  .t-text{ color:#e7edf7; font-size:20px; line-height:1.72; min-height:6px; }
+  .caret{ display:inline-block; width:2px; height:20px; background:#9ec3ff; margin-left:1px; vertical-align:-3px; animation:blink .7s step-end infinite; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .dots{ display:inline-block; margin-left:6px; color:#9ec3ff; letter-spacing:2px; }
+  .dots span{ opacity:.2; animation:dot 1.2s infinite; }
+  .dots span:nth-child(2){ animation-delay:.2s; }
+  .dots span:nth-child(3){ animation-delay:.4s; }
+  @keyframes dot{ 0%,60%,100%{opacity:.2;} 30%{opacity:1;} }
+  /* 暂停态：转写文字末尾不再出现三个点的加载动画 */
+  #stage.paused .dots{ display:none; }
+
+  /* ================= 声波 ================= */
+  .waveform{
+    position:absolute; left:50%; top:355px; width:960px; height:150px; /* 拉宽至舞台(1920px)的1/2 */
+    transform:translateX(-50%);
+    display:flex; align-items:center; justify-content:center; gap:5px; overflow:hidden;
+    transition:all .7s var(--ease);
+    z-index:15;
+    /* 两端渐隐降低透明度 */
+    -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+    mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  }
+  /* 声纹条效果：复用参考演示页（录音·转写交互动效演示）的纵向渐变色条 + 关键帧律动 */
+  .waveform .bar{
+    width:3px; border-radius:3px; flex:0 0 auto; display:block;
+    background:linear-gradient(180deg,#bcd6ff,#4a86e0);
+    animation:wfwave 1s ease-in-out infinite;
+  }
+  @keyframes wfwave{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
+  /* 转写态：大声波直接淡出隐藏，改由下方独立的小声纹展示 */
+  #stage.transcribing .waveform{ opacity:0; pointer-events:none; }
+  /* 暂停态：声纹停止波动，所有条统一高度 */
+  #stage.paused .waveform .bar{ height:18% !important; animation:none !important; transform:none !important; opacity:.85; }
+
+  /* ================= 计时器（录音态：大号居中） ================= */
+  .timer-idle{
+    position:absolute; left:50%; bottom:166px; transform:translate(-50%,0);
+    color:#f2f6ff; font-size:104px; font-weight:800; letter-spacing:2px;
+    text-shadow:0 6px 30px rgba(0,0,0,0.4);
+    transition:opacity .5s var(--ease);
+    z-index:15; font-variant-numeric:tabular-nums;
+  }
+  .timer-idle .colon{ opacity:.9; }
+  #stage.transcribing .timer-idle{ opacity:0; pointer-events:none; }
+
+  /* ================= 转写态：小声纹 + 时间（作为一个整体在页面左右居中） ================= */
+  .time-row{
+    position:absolute; left:50%; bottom:166px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:16px;
+    opacity:0; transition:opacity .5s var(--ease);
+    z-index:15; pointer-events:none;
+  }
+  #stage.transcribing .time-row{ opacity:1; }
+  .mini-wave{
+    width:200px; height:64px;
+    display:flex; align-items:center; justify-content:center; gap:2.5px;
+  }
+  .mini-wave .mbar{
+    width:2.5px; border-radius:2px; background:#cdddfa; transform-origin:center;
+    animation:miniwave .9s ease-in-out infinite alternate;
+  }
+  @keyframes miniwave{ from{ transform:scaleY(.45); } to{ transform:scaleY(1); } }
+  /* 暂停态：小声纹同样停止波动，所有条统一高度 */
+  #stage.paused .mini-wave .mbar{ height:10px !important; animation:none !important; transform:none !important; opacity:.55; }
+  .timer-mini{
+    color:#f2f6ff; font-size:44px; font-weight:800; letter-spacing:1px;
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  .timer-mini .colon{ opacity:.9; }
+
+  /* ================= 底部控制栏 ================= */
+  .controls{
+    position:absolute; left:0; right:0; bottom:70px; display:flex; align-items:center; justify-content:center; z-index:40;
+  }
+  .btn{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    color:#e8eefb; cursor:pointer; border:none; user-select:none;
+    background:rgba(70,86,120,0.55); backdrop-filter:blur(6px);
+    transition:opacity .4s var(--ease), transform .45s var(--ease), max-width .45s var(--ease), margin .45s var(--ease), padding .45s var(--ease), background .2s;
+    white-space:nowrap; overflow:hidden;
+  }
+  .btn.pill{ height:64px; border-radius:34px; padding:0 30px; font-size:20px; }
+  .btn.round{ width:64px; height:64px; border-radius:50%; font-size:22px; padding:0; }
+  .btn.stop{ background:linear-gradient(135deg,#ff5468,#f0374e); box-shadow:0 6px 20px rgba(240,55,78,0.45); }
+  .btn:hover{ filter:brightness(1.12); }
+
+  .ico{ width:22px; height:22px; display:inline-block; }
+
+  /* 暂停/继续按钮图标切换：默认显示暂停图标，暂停态显示播放图标 */
+  #btnPause .ic-play{ display:none; }
+  #stage.paused #btnPause .ic-pause{ display:none; }
+  #stage.paused #btnPause .ic-play{ display:inline-block; }
+
+  /* ---- 核心分组：插槽（转写/关闭转写同槎切换）+ 暂停 + 停止。
+     该分组总宽度恒定不变，因此在 .controls 的居中布局下永远不会发生左右跳动 ---- */
+  .core-group{ position:relative; display:flex; align-items:center; gap:22px; }
+
+  /* 转写 / 关闭转写：同一固定尺寸插槽，内部两个按钮绝对重叠、交叉淡入淡出切换，
+     插槽本身位置与尺寸恒定不变，是操作按钮生长/收起的锚点 */
+  .btn-slot{ position:relative; width:200px; height:64px; flex:0 0 auto; }
+  .slot-btn{
+    position:absolute; top:0; left:0; width:100%; height:100%; margin:0;
+    opacity:0; transform:scale(.92); pointer-events:none;
+    transition:opacity .4s var(--ease), transform .4s var(--ease);
+  }
+  .slot-btn.active{ opacity:1; transform:scale(1); pointer-events:auto; }
+
+  /* 操作按钮组（字体、翻译）：脱离核心分组的文档流，绝对定位、右边缘紧贴插槽左侧；
+     展开时从该锚点向左侧逐渐生长展开，收起时向锚点方向逐渐收拢消失——
+     不占用核心分组宽度，暂停/停止/插槽的位置完全不受影响，杜绝左右跳变 */
+  .action-group{
+    position:absolute; top:0; right:100%; height:100%; margin-right:22px;
+    display:flex; align-items:center; pointer-events:none;
+  }
+  .action-group .btn{ transform-origin:right center; margin-left:22px; pointer-events:auto; }
+  .action-group .btn:first-child{ margin-left:0; }
+
+  /* 隐藏态（用于操作按钮的生长/收拢，从右侧锚点展开、向右侧锚点收起，无位移回弹） */
+  .btn.hidden{ opacity:0; transform:scale(.5); max-width:0 !important; padding:0; margin-left:0 !important; pointer-events:none; }
+
+  /* 底部提示 */
+  .hint{ position:absolute; bottom:18px; left:50%; transform:translateX(-50%); color:rgba(200,215,240,0.5); font-size:14px; z-index:60; }
+
+  /* 重播按钮 */
+  #replay{
+    position:fixed; right:24px; top:20px; z-index:200; padding:10px 18px; border-radius:22px; border:none; cursor:pointer;
+    background:rgba(47,107,255,0.9); color:#fff; font-size:14px; font-weight:600; box-shadow:0 8px 24px rgba(47,107,255,0.4);
+  }
+  #replay:hover{ filter:brightness(1.1); }
+</style>
+</head>
+<body>
+  <button id="replay">↻ 重置到录音态</button>
+  <div id="viewport">
+    <div id="stage">
+      <!-- 顶栏 -->
+      <div class="topbar">
+        <div class="rec-tag">
+          <span class="rec-dot"></span>
+          <span id="recStatusText">正在录音</span>
+        </div>
+      </div>
+      <div class="title">20260717录音文件</div>
+
+      <!-- 左侧转写文本 -->
+      <div class="transcript" id="transcript">
+        <div class="t-inner" id="transcriptInner">
+          <div class="t-preface">这也是二维中的我们和二维平面的关系，我们能轻易从三维进入平面上的一个圈。</div>
+        </div>
+      </div>
+
+      <!-- 声波（录音态） -->
+      <div class="waveform" id="waveform"></div>
+
+      <!-- 计时器（录音态：大号居中） -->
+      <div class="timer-idle">00<span class="colon">:</span>37</div>
+
+      <!-- 转写态：小声纹 + 时间（整体在页面左右居中） -->
+      <div class="time-row" id="timeRow">
+        <div class="mini-wave" id="miniWave"></div>
+        <div class="timer-mini">00<span class="colon">:</span>37</div>
+      </div>
+
+      <!-- 底部控制栏 -->
+      <div class="controls" id="controls">
+        <!-- 核心分组：插槽（转写/关闭转写同槎切换，锚点固定不动）+ 暂停 + 停止，
+             该分组总宽度恒定，永不因展开/收起操作按钮而左右跳动 -->
+        <div class="core-group">
+          <div class="btn-slot" id="btnSlot">
+            <!-- 操作按钮组：翻译、字体，绝对定位挂在插槽左侧，从插槽处向外生长/向插槽收拢 -->
+            <div class="action-group" id="actionGroup">
+              <button class="btn round hidden" id="btnTranslate" title="翻译">
+                <svg class="ico" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9.54199 28.5664C10.3358 28.5664 10.9794 29.2101 10.9795 30.0039V33.6914C10.9795 34.634 11.7439 35.3984 12.6865 35.3984H16.374C17.1679 35.3984 17.8115 36.042 17.8115 36.8359C17.8115 37.6298 17.1679 38.2734 16.374 38.2734H12.6865C10.1561 38.2734 8.10449 36.2219 8.10449 33.6914V30.0039C8.10463 29.2102 8.74828 28.5665 9.54199 28.5664ZM30.5039 21.4951C31.0716 21.4951 31.5864 21.8292 31.8174 22.3477L36.2754 32.3662L38.0625 36.2266C38.3959 36.947 38.0818 37.8013 37.3613 38.1348C36.641 38.4678 35.7865 38.1539 35.4531 37.4336L34.0527 34.4072H26.9561L25.5547 37.4336C25.2212 38.1539 24.3669 38.468 23.6465 38.1348C22.9263 37.8012 22.6121 36.9469 22.9453 36.2266L24.7324 32.3662L29.1904 22.3477L29.2373 22.2529C29.4861 21.789 29.9718 21.4952 30.5039 21.4951ZM28.251 31.5322H32.7578L30.5039 26.4678L28.251 31.5322ZM16.4111 7.73242C17.2049 7.73242 17.8484 8.37619 17.8486 9.16992V11.4902H21.4355C23.4184 11.4905 25.0264 13.0981 25.0264 15.0811V19.7979C25.026 21.7805 23.4182 23.3875 21.4355 23.3877H17.8486V26.4639C17.8486 27.2577 17.205 27.9014 16.4111 27.9014C15.6174 27.9012 14.9737 27.2576 14.9736 26.4639V23.3877H11.3877C9.40483 23.3877 7.79722 21.7806 7.79688 19.7979V15.0811C7.79688 13.098 9.40461 11.4902 11.3877 11.4902H14.9736V9.16992C14.9738 8.3763 15.6175 7.7326 16.4111 7.73242ZM17.8486 20.5127H21.4355C21.8304 20.5125 22.151 20.1927 22.1514 19.7979V15.0811C22.1514 14.6859 21.8306 14.3655 21.4355 14.3652H17.8486V20.5127ZM11.3877 14.3652C10.9924 14.3652 10.6719 14.6858 10.6719 15.0811V19.7979C10.6722 20.1928 10.9926 20.5127 11.3877 20.5127H14.9736V14.3652H11.3877ZM32.959 9.06836C35.4894 9.06839 37.541 11.1199 37.541 13.6504V17.3379C37.5407 18.1314 36.8971 18.7753 36.1035 18.7754C35.3099 18.7753 34.6664 18.1315 34.666 17.3379V13.6504C34.666 12.7077 33.9016 11.9434 32.959 11.9434H29.2715C28.4778 11.9433 27.8342 11.2996 27.834 10.5059C27.834 9.71199 28.4776 9.06842 29.2715 9.06836H32.959Z" fill="#ECF1FF"/>
+                </svg>
+              </button>
+              <button class="btn round hidden" id="btnFont" title="字体">
+                <svg class="ico" viewBox="0 0 41 41" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15.5742 7.24521C16.5228 5.53554 19.0096 5.53537 19.958 7.24521L20.0479 7.42294L23.2168 14.2892C22.8093 14.6497 22.4394 15.0722 22.1211 15.5577L22.0273 15.6983L21.8018 16.1095L21.7266 16.2462L21.6611 16.3858L21.2803 17.2091L17.7656 9.59286L12.3115 21.4102H19.3418L17.9648 24.3927H10.9355L6.83984 33.2667H3.55664L15.4844 7.42294L15.5742 7.24521Z" fill="#ECF1FF"/>
+                  <path d="M25.709 18.0852C26.437 16.7725 28.3465 16.7722 29.0742 18.0852L29.1426 18.221L36.9219 35.0745H33.6377L31.3232 30.0598H23.46L21.1455 35.0745H17.8613L25.6406 18.221L25.709 18.0852ZM24.8369 27.0774H29.9463L27.3916 21.5413L24.8369 27.0774Z" fill="#ECF1FF"/>
+                </svg>
+              </button>
+            </div>
+
+            <button class="btn pill slot-btn active" id="btnTranscribe">
+              <svg class="ico" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22.584 13.998C27.3416 13.9983 31.1988 17.8557 31.1992 22.6133V29.332C31.199 30.4363 30.3035 31.3318 29.1992 31.332H21.1992C16.4128 31.332 12.5322 27.4515 12.5322 22.665C12.5324 17.8787 16.4129 13.998 21.1992 13.998H22.584ZM18.4814 18.002C18.1403 18.0021 17.8634 18.279 17.8633 18.6201V20.9482C17.8635 21.0714 17.9658 21.1707 18.0889 21.167C18.1963 21.1634 18.2844 21.0809 18.3057 20.9756C18.38 20.6053 18.5356 20.2773 18.7256 20.002H21.4238C21.4187 22.253 21.4121 24.5048 21.4121 26.7559H20.251C20.0939 26.756 19.9646 26.8821 19.9609 27.0391C19.9576 27.2011 20.0889 27.3348 20.251 27.335H24.8223C24.9788 27.3349 25.1063 27.2073 25.1064 27.0508C25.1061 26.8954 24.9806 26.7691 24.8252 26.7676L23.4805 26.7559L23.4902 20.002H26.1387C26.4114 20.4064 26.6195 20.837 26.7188 21.0596C26.7596 21.1511 26.85 21.2117 26.9502 21.2119C27.086 21.2118 27.1971 21.1016 27.1973 20.9658V18.6436C27.197 18.2892 26.9091 18.002 26.5547 18.002H18.4814ZM10.8701 0.666016C15.8405 0.666194 19.8701 4.69561 19.8701 9.66602C19.8701 10.8576 19.6384 11.9953 19.2178 13.0361C16.0127 13.5454 13.3505 15.6865 12.1104 18.5811C11.7049 18.637 11.2909 18.666 10.8701 18.666H3.20312C2.09858 18.666 1.20316 17.7706 1.20312 16.666V9.28125C1.20322 4.52324 5.06034 0.666095 9.81836 0.666016H10.8701ZM11.0635 3.79883C10.8583 3.79891 10.6611 3.88176 10.5186 4.0293L10.5166 4.03125C10.2431 4.32257 10.2431 4.77705 10.5166 5.06836L10.5215 5.07324C12.8987 7.45582 12.899 11.3139 10.5215 13.6963C10.2207 13.9978 10.2205 14.4867 10.5215 14.7881C10.8229 15.0886 11.3119 15.0887 11.6133 14.7881V14.7871C14.564 11.8069 14.5608 7.00472 11.6064 4.02832C11.464 3.8816 11.268 3.79894 11.0635 3.79883ZM8.97949 5.9375C8.68632 5.67535 8.24238 5.67533 7.94922 5.9375V5.93652L7.93555 5.95117C7.66796 6.24352 7.66776 6.69312 7.93555 6.98535L7.94141 6.99121C9.26972 8.32713 9.26981 10.4854 7.94141 11.8213L7.93359 11.8291C7.67173 12.1223 7.67153 12.5663 7.93359 12.8594L7.93262 12.8604L7.94727 12.873C8.23951 13.1407 8.68917 13.1406 8.98145 12.873L8.98926 12.8652C10.8574 10.9379 10.8573 7.87471 8.98926 5.94727H8.99023L8.97949 5.9375ZM6.52148 8.51465C6.16424 8.36783 5.75347 8.45137 5.48145 8.72559C5.30271 8.90319 5.2012 9.14548 5.20117 9.39746C5.20132 9.64939 5.30267 9.89084 5.48145 10.0684C5.75347 10.3428 6.16413 10.4262 6.52148 10.2793C6.87877 10.1322 7.11207 9.7838 7.1123 9.39746C7.11226 9.01092 6.87893 8.66179 6.52148 8.51465Z" fill="white"/>
+              </svg>
+              转写
+            </button>
+            <button class="btn pill slot-btn" id="btnClose">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              关闭转写
+            </button>
+          </div>
+
+          <button class="btn round" id="btnPause" title="暂停">
+            <svg class="ico ic-pause" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9.31836 7.4541V29.8177" stroke="white" stroke-width="7.45455" stroke-linecap="round"/>
+              <path d="M27.9551 7.4541V29.8177" stroke="white" stroke-width="7.45455" stroke-linecap="round"/>
+            </svg>
+            <svg class="ico ic-play" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10.4551 34.0044V7.8138C10.4551 4.4738 14.1775 2.48162 16.9566 4.33432L36.5995 17.4296C39.0824 19.0849 39.0824 22.7333 36.5995 24.3886L16.9565 37.4839C14.1775 39.3366 10.4551 37.3444 10.4551 34.0044Z" fill="white"/>
+            </svg>
+          </button>
+          <button class="btn round stop" id="btnStop" title="停止录制">
+            <svg class="ico" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3.72656" y="3.72754" width="29.8182" height="29.8182" rx="7.45455" fill="white"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="hint" id="hint">点击左下角「转写」按钮，触发转写交互</div>
+    </div>
+  </div>
+
+<script>
+  /* ---------- 舞台自适应缩放 ---------- */
+  const stage = document.getElementById('stage');
+  function fit(){
+    const s = Math.min(window.innerWidth/1920, window.innerHeight/1080);
+    stage.style.transform = `scale(${s})`;
+  }
+  window.addEventListener('resize', fit); fit();
+
+  /* ---------- 生成声波竖条：复用参考演示页（录音·转写交互动效演示）的声纹效果——
+     纵向渐变色条 + 正弦振幅包络（中间高、两侧低）+ CSS 关键帧持续律动，
+     容器整体已通过 mask 在两端做透明度渐隐 ---------- */
+  const wf = document.getElementById('waveform');
+  const BAR_COUNT = 114;
+  for(let i=0;i<BAR_COUNT;i++){
+    const b = document.createElement('div');
+    b.className = 'bar';
+    const env = Math.sin((i/(BAR_COUNT-1))*Math.PI); // 0~1，中间高两侧低
+    const h = 14 + env*78*(0.45+Math.random()*0.55); // 14%~92%（相对容器高度）
+    b.style.height = h.toFixed(0) + '%';
+    b.style.animationDelay = (-(Math.random()*1)).toFixed(2) + 's';
+    b.style.animationDuration = (0.7+Math.random()*0.7).toFixed(2) + 's';
+    wf.appendChild(b);
+  }
+
+  /* ---------- 生成转写态小声纹（时间前方，两端渐窄如小圆点，持续波动） ---------- */
+  const mw = document.getElementById('miniWave');
+  const MINI_COUNT = 40;
+  for(let i=0;i<MINI_COUNT;i++){
+    const b = document.createElement('div');
+    b.className = 'mbar';
+    const edge = 1 - Math.abs(i-(MINI_COUNT-1)/2)/((MINI_COUNT-1)/2); // 0~1，两端趋近 0 呈小圆点
+    const h = 4 + Math.round(Math.abs(Math.sin(i*0.75))*24*edge + Math.random()*8*edge);
+    b.style.height = Math.max(4, h) + 'px';
+    b.style.opacity = (0.35 + edge*0.65).toFixed(2);
+    b.style.animationDelay = (Math.random()*0.9).toFixed(2)+'s';
+    b.style.animationDuration = (0.55+Math.random()*0.5).toFixed(2)+'s';
+    mw.appendChild(b);
+  }
+
+  /* ---------- 转写文本数据 ---------- */
+  const segments = [
+    { time:'00:12', text:'越来越多的智子将在那个行星系中游荡，它们合在一起也没有细菌的亿万分之一那么大。' },
+    { time:'00:20', text:'背屏功能丰富，可显示时钟、照片，展示重要通知等。将在那个行星系中游荡，它们合在一起也没有细菌的亿万分之一那么大。越来越多的智子将在那个行星系中游荡。' },
+    { time:'00:35', text:'你看原来我们不是这样的嘛，然后现在是只有元宝纪要，没有完会的情况，就假如说三个人开会，其中有一个人退出了，那这个会议其实还在，它只显示这个元宝纪要。但是底下会有一个瞬态，就是我这个页面就底下会有一个损态。' },
+    { time:'00:50', text:'你看原来我们不是这样的嘛，然后现在是只有元宝纪要，没有完会的情况，就假如说三个人开会，其中有一个人退出了，那这个会议其实还在，它只显示这个元宝纪要。但是底下会有一个瞬态，就是我这个页面就底下会有一个损态。' },
+    { time:'01:10', text:'然后就是滚动的效果，就滑动的时候的效果，它这里有个遮罩什么的，这个就是滚动的一个效果。但其实我觉得立昌这个稿子已经差不多，已经经还原，但对你。然后就是滚动的效果，就滑动的时候的效果，它这里有个遮罩什么的，这个就是滚动的一个效果。' },
+    { time:'01:35', text:'好的，今天的会议就开到这里，待办事项我将整理成文档发送到讨论组中，接下来的日子希望大家继续保持高效协作，全力以赴推进各项工作，期待与大家携手并进，共同创造下半年的辉煌。' },
+  ];
+
+  const transcript = document.getElementById('transcript');
+  const transcriptInner = document.getElementById('transcriptInner');
+  const hint = document.getElementById('hint');
+
+  const btnTranscribe = document.getElementById('btnTranscribe');
+  const btnClose = document.getElementById('btnClose');
+  const btnTranslate = document.getElementById('btnTranslate');
+  const btnFont = document.getElementById('btnFont');
+  const btnPause = document.getElementById('btnPause');
+  const recStatusText = document.getElementById('recStatusText');
+
+  let runToken = 0;
+  let isPaused = false;
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+  /* 暂停期间挂起：打字机在下一步动作前会先等这个 promise resolve，
+     暂停时一直轮询直到 isPaused 变为 false 才继续出字 */
+  function waitIfPaused(){
+    if(!isPaused) return Promise.resolve();
+    return new Promise(resolve=>{
+      const iv = setInterval(()=>{
+        if(!isPaused){ clearInterval(iv); resolve(); }
+      }, 80);
+    });
+  }
+
+  /* ---------- 让转写内容整体"从上往下走字"：新文字始终在下方正常生长，
+     超出可视高度后 .t-inner 平滑向下跟随（transform 过渡），最新一行始终完整可见；
+     只有真正占满区域产生溢出裁剪时，才启用顶部渐隐遮罩，未占满时不渐隐 ---------- */
+  function adjustScroll(){
+    const overflow = transcriptInner.scrollHeight - transcript.clientHeight;
+    const hasOverflow = overflow > 0;
+    transcript.classList.toggle('has-overflow', hasOverflow);
+    transcriptInner.style.transform = hasOverflow ? `translateY(-${overflow}px)` : 'translateY(0)';
+  }
+
+  /* ---------- 打字机 ---------- */
+  async function typewriter(token){
+    // 清空旧的分段（保留 preface）
+    transcriptInner.querySelectorAll('.t-seg').forEach(n=>n.remove());
+    adjustScroll();
+
+    let lastText;
+    for(const seg of segments){
+      if(token!==runToken) return;
+      const wrap = document.createElement('div');
+      wrap.className = 't-seg';
+      const t = document.createElement('div');
+      t.className = 't-time';
+      t.textContent = seg.time;
+      const p = document.createElement('div');
+      p.className = 't-text';
+      wrap.appendChild(t); wrap.appendChild(p);
+      transcriptInner.appendChild(wrap);
+      adjustScroll();
+
+      // 时间戳淡入
+      await sleep(60); if(token!==runToken) return;
+      await waitIfPaused(); if(token!==runToken) return;
+      t.classList.add('show');
+
+      // 光标
+      const caret = document.createElement('span');
+      caret.className = 'caret';
+      p.appendChild(caret);
+
+      for(const ch of seg.text){
+        if(token!==runToken) return;
+        await waitIfPaused(); if(token!==runToken) return;
+        caret.insertAdjacentText('beforebegin', ch);
+        adjustScroll();
+        await sleep(22);
+      }
+      caret.remove();
+      lastText = p;
+      await sleep(140);
+    }
+
+    // 全部完成 → 末尾三点循环闪烁
+    if(token===runToken && lastText){
+      const dots = document.createElement('span');
+      dots.className = 'dots';
+      dots.innerHTML = '<span>·</span><span>·</span><span>·</span>';
+      lastText.appendChild(dots);
+    }
+  }
+
+  /* ---------- 复位到初始录音态 ---------- */
+  function reset(){
+    ++runToken; // 打断进行中的打字机
+    stage.classList.remove('transcribing');
+    stage.classList.remove('paused');
+    isPaused = false;
+    recStatusText.textContent = '正在录音';
+    btnPause.title = '暂停';
+    transcriptInner.querySelectorAll('.t-seg').forEach(n=>n.remove());
+    transcriptInner.style.transform = 'translateY(0)';
+    transcript.classList.remove('has-overflow');
+    // 插槽复位：关闭转写 -> 转写（同槎交叉淡出淡入，位置不变）
+    btnClose.classList.remove('active');
+    btnTranscribe.classList.add('active');
+    // 操作按钮向插槽方向逐渐收拢：距离插槽较远的（翻译）先收，较近的（字体）后收，
+    // 与展开时"由近及远"的生长顺序相呼应，形成对称的收起动效
+    btnTranslate.style.transitionDelay = '0s';
+    btnFont.style.transitionDelay = '.08s';
+    [btnTranslate, btnFont].forEach(b=>b.classList.add('hidden'));
+    hint.textContent = '点击左下角「转写」按钮，触发转写交互';
+    hint.style.opacity = '1';
+  }
+
+  /* ---------- 暂停/继续录音：
+     1. 顶部状态由「正在录音」切换为「录音已暂停」；
+     2. 声纹（大声波 + 转写态小声纹）停止波动，统一为固定高度；
+     3. 转写文字末尾三个点的加载动画隐藏；
+     4. 暂停按钮图标切换为继续（播放）图标 ---------- */
+  function togglePause(){
+    const paused = stage.classList.toggle('paused');
+    isPaused = paused; // 转写打字机会据此挂起/恢复出字
+    recStatusText.textContent = paused ? '录音已暂停' : '正在录音';
+    btnPause.title = paused ? '继续' : '暂停';
+  }
+  btnPause.addEventListener('click', togglePause);
+
+  /* ---------- 触发转写交互（手动点击） ---------- */
+  function startTranscribe(){
+    const token = ++runToken;
+    hint.style.opacity = '0';
+
+    // 进入转写态：声波右移收缩、时间缩小、文本区滑入
+    stage.classList.add('transcribing');
+    // 插槽内切换：转写 -> 关闭转写（同槎交叉淡出淡入，插槽位置/尺寸完全不变，无跳变）
+    btnTranscribe.classList.remove('active');
+    btnClose.classList.add('active');
+
+    // 操作按钮从插槽左侧向外依次生长展开：距插槽较近的（字体）先长出，
+    // 较远的（翻译）随后跟上，形成"由近及远"的生长动效，且不影响暂停/停止的位置
+    btnFont.style.transitionDelay = '.05s';
+    btnTranslate.style.transitionDelay = '.15s';
+    requestAnimationFrame(()=>{
+      [btnFont, btnTranslate].forEach(b=>b.classList.remove('hidden'));
+    });
+
+    // 声波与文本区就位后启动打字机
+    setTimeout(()=>{ if(token===runToken) typewriter(token); }, 650);
+  }
+
+  // 手动交互：点击转写触发、点击关闭转写 / 重播复位
+  btnTranscribe.addEventListener('click', startTranscribe);
+  btnClose.addEventListener('click', reset);
+  document.getElementById('replay').addEventListener('click', reset);
+
+  // 初始进入即为录音态，等待用户手动点击（不自动播放）
+  reset();
+</script>
+</body>
+</html>
