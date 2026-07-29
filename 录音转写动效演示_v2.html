@@ -111,11 +111,11 @@
   #stage.transcribing .waveform{ top:867px; width:1480px; height:78px; gap:8px; }
   #stage.transcribing .waveform .bar{ width:3px; animation:wfwaveSmall 1s ease-in-out infinite; }
   @keyframes wfwaveSmall{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
-  /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的1/6（即原「一半」高度的再1/3，--wf-max-h 由JS在生成声纹时写入），
-     停止律动（录音态/转写态通用同一套元素与规则），用 height 覆盖各条原本不同的内联高度，做到真正等高 */
+  /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的1/12（--wf-max-h 由JS在生成声纹时写入），
+     开启转写前/后的暂停态通用同一套元素与规则，停止律动，用 height 覆盖各条原本不同的内联高度，做到真正等高 */
   #stage.paused .waveform .bar{
     animation:none !important; transform:none !important;
-    height:calc(var(--wf-max-h, 92%) * 0.1667) !important;
+    height:calc(var(--wf-max-h, 92%) * 0.0833) !important;
   }
 
   /* ================= 底部操作栏（唯一实例，不随转写状态重新渲染/淡入淡出）：
