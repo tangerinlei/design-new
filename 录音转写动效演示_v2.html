@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>录音转写方案二交互动效演示</title>
+<title>录音转写 · 交互动效演示 v2</title>
 <style>
   :root{
     /* 全局缓动：ease-out */
@@ -104,14 +104,14 @@
   @keyframes wfwave{ 0%,100%{ transform:scaleY(.3); } 50%{ transform:scaleY(1); } }
   /* 转写态：声纹整体向下移动并缩小（宽度=转写文字区域1480px两端各收窄32px=1416px，高度再减小10px为88px，
      距底部操作栏的间距相应增大）；同时条宽恢复为3px、波动幅度恢复为之前较小的效果 */
-  #stage.transcribing .waveform{ top:867px; width:1416px; height:88px; }
+  #stage.transcribing .waveform{ top:867px; width:1416px; height:88px; gap:8px; }
   #stage.transcribing .waveform .bar{ width:3px; animation:wfwaveSmall 1s ease-in-out infinite; }
   @keyframes wfwaveSmall{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
-  /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的一半（--wf-max-h 由JS在生成声纹时写入），
+  /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的1/6（即原「一半」高度的再1/3，--wf-max-h 由JS在生成声纹时写入），
      停止律动（录音态/转写态通用同一套元素与规则），用 height 覆盖各条原本不同的内联高度，做到真正等高 */
   #stage.paused .waveform .bar{
     animation:none !important; transform:none !important;
-    height:calc(var(--wf-max-h, 92%) * 0.5) !important;
+    height:calc(var(--wf-max-h, 92%) * 0.1667) !important;
   }
 
   /* ================= 底部操作栏（唯一实例，不随转写状态重新渲染/淡入淡出）：
