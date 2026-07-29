@@ -224,13 +224,13 @@
       <!-- 声波（录音态） -->
       <div class="waveform" id="waveform"></div>
 
-      <!-- 计时器（录音态：大号居中） -->
-      <div class="timer-idle">00<span class="colon">:</span>37</div>
+      <!-- 计时器（录音态：大号居中，从 00:00 持续走动） -->
+      <div class="timer-idle"><span id="timeMinIdle">00</span><span class="colon">:</span><span id="timeSecIdle">00</span></div>
 
-      <!-- 转写态：小声纹 + 时间（整体在页面左右居中） -->
+      <!-- 转写态：小声纹 + 时间（整体在页面左右居中，与上方计时器同步走动） -->
       <div class="time-row" id="timeRow">
         <div class="mini-wave" id="miniWave"></div>
-        <div class="timer-mini">00<span class="colon">:</span>37</div>
+        <div class="timer-mini"><span id="timeMinMini">00</span><span class="colon">:</span><span id="timeSecMini">00</span></div>
       </div>
 
       <!-- 底部控制栏 -->
@@ -349,6 +349,26 @@
 
   let runToken = 0;
   let isPaused = false;
+
+  /* ---------- 计时器：每秒走动一次，暂停时挂起，大号/小号两处展示实时同步 ---------- */
+  const timeMinIdle = document.getElementById('timeMinIdle');
+  const timeSecIdle = document.getElementById('timeSecIdle');
+  const timeMinMini = document.getElementById('timeMinMini');
+  const timeSecMini = document.getElementById('timeSecMini');
+  const START_ELAPSED = 0; // 从 00:00 开始持续走动
+  let elapsedSec = START_ELAPSED;
+  function renderTimer(){
+    const m = String(Math.floor(elapsedSec/60)).padStart(2,'0');
+    const s = String(elapsedSec%60).padStart(2,'0');
+    timeMinIdle.textContent = m; timeSecIdle.textContent = s;
+    timeMinMini.textContent = m; timeSecMini.textContent = s;
+  }
+  renderTimer();
+  setInterval(()=>{
+    if(isPaused) return; // 暂停期间计时器停止走动
+    elapsedSec++;
+    renderTimer();
+  }, 1000);
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
   /* 暂停期间挂起：打字机在下一步动作前会先等这个 promise resolve，
      暂停时一直轮询直到 isPaused 变为 false 才继续出字 */
@@ -422,12 +442,15 @@
     }
   }
 
-  /* ---------- 复位到初始录音态 ---------- */
-  function reset(){
+  /* ---------- 复位到初始录音态
+     resetTimer=false（默认）：关闭转写只复位转写相关状态，计时器不受影响、持续走动；
+     resetTimer=true：仅重播按钮「重置到录音态」触发，连同计时器一起清零重新计时 ---------- */
+  function reset(resetTimer=false){
     ++runToken; // 打断进行中的打字机
     stage.classList.remove('transcribing');
     stage.classList.remove('paused');
     isPaused = false;
+    if(resetTimer){ elapsedSec = START_ELAPSED; renderTimer(); }
     recStatusText.textContent = '正在录音';
     btnPause.title = '暂停';
     transcriptInner.querySelectorAll('.t-seg').forEach(n=>n.remove());
@@ -482,9 +505,11 @@
   }
 
   // 手动交互：点击转写触发、点击关闭转写 / 重播复位
+  // 注意：addEventListener 会把 MouseEvent 作为第一个参数传入回调，
+  // 必须用箭头函数显式传参，避免 event 对象被误当作 resetTimer 使用
   btnTranscribe.addEventListener('click', startTranscribe);
-  btnClose.addEventListener('click', reset);
-  document.getElementById('replay').addEventListener('click', reset);
+  btnClose.addEventListener('click', ()=>reset(false));
+  document.getElementById('replay').addEventListener('click', ()=>reset(true));
 
   // 初始进入即为录音态，等待用户手动点击（不自动播放）
   reset();
