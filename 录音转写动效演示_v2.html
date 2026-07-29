@@ -104,10 +104,11 @@
   }
   @keyframes wfwave{ 0%,100%{ transform:scaleY(.3); } 50%{ transform:scaleY(1); } }
   /* 转写态：声纹整体向下移动并缩小（宽度与转写文字区域一致1480px，高度再减小10px为78px，
-     距底部操作栏的间距相应增大）；同时条宽恢复为3px、波动幅度恢复为之前较小的效果。
-     注意：条数固定114根、条宽3px，gap需调大到10px使条+间距总宽贴近容器1480px，
-     避免因条数×(条宽+间距)总和小于容器宽度而在两端露出明显空白，让声纹视觉宽度与转写文字区一致 */
-  #stage.transcribing .waveform{ top:867px; width:1480px; height:78px; gap:10px; }
+     距底部操作栏的间距相应增大）；条宽保持3px、间距8px（播放中/暂停中一致）。
+     注意：条数由JS的BAR_COUNT统一控制（已从114增加到135根，见JS注释），
+     135×3px条宽+134×8px间距≈1477px，贴近容器1480px，两端不再露出明显空白，
+     该条数对播放态和暂停态均生效，两态视觉宽度均与转写文字区对齐 */
+  #stage.transcribing .waveform{ top:867px; width:1480px; height:78px; gap:8px; }
   #stage.transcribing .waveform .bar{ width:3px; animation:wfwaveSmall 1s ease-in-out infinite; }
   @keyframes wfwaveSmall{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
   /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的1/6（即原「一半」高度的再1/3，--wf-max-h 由JS在生成声纹时写入），
@@ -269,7 +270,9 @@
   /* ---------- 生成大声波竖条：纵向渐变色条 + 正弦振幅包络（中间高、两侧低）+ CSS 关键帧持续律动，
      容器整体已通过 mask 在两端做透明度渐隐 ---------- */
   const wf = document.getElementById('waveform');
-  const BAR_COUNT = 114;
+  // 条数从114增加到135：使转写态（条宽3px、间距8px）总宽约1477px贴近容器1480px，
+  // 消除两端空白，同时不影响未开启转写时的大声纹外观（本身已超出容器宽度被裁剪，条数增加仅增加被裁剪部分）
+  const BAR_COUNT = 135;
   let maxBarH = 0; // 记录所有声纹条中最高的静态高度（波动幅度的最高点）
   for(let i=0;i<BAR_COUNT;i++){
     const b = document.createElement('div');
