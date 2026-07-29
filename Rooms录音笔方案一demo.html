@@ -32,19 +32,7 @@
     transform:rotate(-8deg); pointer-events:none;
   }
 
-  /* ================= 顶部状态栏 ================= */
-  .topbar{ position:absolute; top:0; left:0; right:0; height:64px; display:flex; align-items:center; padding:0 32px; z-index:50; }
-
-  .rec-tag{
-    display:flex; align-items:center; gap:9px;
-    background:rgba(15,25,45,0.45); color:#fff; font-size:15px; font-weight:500; letter-spacing:.5px;
-    padding:8px 16px; border-radius:20px; backdrop-filter:blur(4px);
-  }
-  .rec-dot{ width:9px; height:9px; border-radius:50%; background:#ff4d5e; box-shadow:0 0 8px rgba(255,77,94,0.85); animation:recdot 1.3s ease-in-out infinite; }
-  @keyframes recdot{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.4; transform:scale(.8);} }
-  /* 暂停态：状态点变灰、停止闪烁 */
-  #stage.paused .rec-dot{ background:#8a92a3; box-shadow:none; animation:none; opacity:1; transform:scale(1); }
-
+  /* ================= 顶部标题 ================= */
   .title{ position:absolute; left:50%; top:0; height:64px; display:flex; align-items:center; transform:translateX(-50%); color:#d6deec; font-size:19px; letter-spacing:1px; font-weight:400; }
 
   /* ================= 转写文本区（屏幕左右居中） ================= */
@@ -185,12 +173,6 @@
   <div id="viewport">
     <div id="stage">
       <!-- 顶栏 -->
-      <div class="topbar">
-        <div class="rec-tag">
-          <span class="rec-dot"></span>
-          <span id="recStatusText">正在录音</span>
-        </div>
-      </div>
       <div class="title">20260717录音文件</div>
 
       <!-- 左侧转写文本 -->
@@ -306,7 +288,6 @@
   const btnTranslate = document.getElementById('btnTranslate');
   const btnFont = document.getElementById('btnFont');
   const btnPause = document.getElementById('btnPause');
-  const recStatusText = document.getElementById('recStatusText');
   const timerMinEl = document.getElementById('timerMin');
   const timerSecEl = document.getElementById('timerSec');
 
@@ -403,7 +384,6 @@
     stage.classList.remove('transcribing');
     stage.classList.remove('paused');
     isPaused = false;
-    recStatusText.textContent = '正在录音';
     btnPause.title = '暂停';
     elapsedSeconds = 0;
     updateTimerDisplay();
@@ -421,14 +401,12 @@
   }
 
   /* ---------- 暂停/继续录音：
-     1. 顶部状态由「正在录音」切换为「录音已暂停」；
-     2. 声纹停止波动，统一为固定矮高度；
-     3. 转写文字末尾三个点的加载动画隐藏；
-     4. 暂停按钮图标切换为继续（播放）图标 ---------- */
+     1. 声纹停止波动，统一为固定矮高度；
+     2. 转写文字末尾三个点的加载动画隐藏；
+     3. 暂停按钮图标切换为继续（播放）图标 ---------- */
   function togglePause(){
     const paused = stage.classList.toggle('paused');
     isPaused = paused; // 转写打字机会据此挂起/恢复出字
-    recStatusText.textContent = paused ? '录音已暂停' : '正在录音';
     btnPause.title = paused ? '继续' : '暂停';
   }
   btnPause.addEventListener('click', togglePause);

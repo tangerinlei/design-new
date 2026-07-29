@@ -32,20 +32,8 @@
     transform:rotate(-8deg); pointer-events:none;
   }
 
-  /* ================= 顶部状态栏 ================= */
-  .topbar{ position:absolute; top:0; left:0; right:0; height:64px; display:flex; align-items:center; padding:0 32px; z-index:50; }
-
-  .rec-tag{
-    display:flex; align-items:center; gap:9px;
-    background:rgba(15,25,45,0.45); color:#fff; font-size:15px; font-weight:500; letter-spacing:.5px;
-    padding:8px 16px; border-radius:20px; backdrop-filter:blur(4px);
-  }
-  .rec-dot{ width:9px; height:9px; border-radius:50%; background:#ff4d5e; box-shadow:0 0 8px rgba(255,77,94,0.85); animation:recdot 1.3s ease-in-out infinite; }
-  @keyframes recdot{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.4; transform:scale(.8);} }
-  /* 暂停态：状态点变灰、停止闪烁 */
-  #stage.paused .rec-dot{ background:#8a92a3; box-shadow:none; animation:none; opacity:1; transform:scale(1); }
-
-  .title{ position:absolute; left:50%; top:0; height:64px; display:flex; align-items:center; transform:translateX(-50%); color:#d6deec; font-size:19px; letter-spacing:1px; font-weight:400; }
+  /* ================= 顶部标题 ================= */
+  .title{ position:absolute; left:50%; top:0; height:64px; display:flex; align-items:center; transform:translateX(-50%); color:#d6deec; font-size:19px; letter-spacing:1px; font-weight:400; z-index:50; }
 
   /* ================= 转写文本区（屏幕左右居中） ================= */
   .transcript{
@@ -197,28 +185,13 @@
   /* 暂停 / 停止：与前一个可见按钮统一保持 22px 间距 */
   #btnPause, #btnStop{ margin-left:22px; }
 
-  /* 底部提示 */
-  .hint{ position:absolute; bottom:18px; left:50%; transform:translateX(-50%); color:rgba(200,215,240,0.5); font-size:14px; z-index:60; }
 
-  /* 重播按钮 */
-  #replay{
-    position:fixed; right:24px; top:20px; z-index:200; padding:10px 18px; border-radius:22px; border:none; cursor:pointer;
-    background:rgba(47,107,255,0.9); color:#fff; font-size:14px; font-weight:600; box-shadow:0 8px 24px rgba(47,107,255,0.4);
-  }
-  #replay:hover{ filter:brightness(1.1); }
 </style>
 </head>
 <body>
-  <button id="replay">↻ 重置到录音态</button>
   <div id="viewport">
     <div id="stage">
-      <!-- 顶栏 -->
-      <div class="topbar">
-        <div class="rec-tag">
-          <span class="rec-dot"></span>
-          <span id="recStatusText">正在录音</span>
-        </div>
-      </div>
+      <!-- 顶栏（仅保留标题） -->
       <div class="title">20260717录音文件</div>
 
       <!-- 左侧转写文本 -->
@@ -289,7 +262,6 @@
         </div>
       </div>
 
-      <div class="hint" id="hint">点击左下角「转写」按钮，触发转写交互</div>
     </div>
   </div>
 
@@ -345,14 +317,12 @@
 
   const transcript = document.getElementById('transcript');
   const transcriptInner = document.getElementById('transcriptInner');
-  const hint = document.getElementById('hint');
 
   const btnTranscribe = document.getElementById('btnTranscribe');
   const btnClose = document.getElementById('btnClose');
   const btnTranslate = document.getElementById('btnTranslate');
   const btnFont = document.getElementById('btnFont');
   const btnPause = document.getElementById('btnPause');
-  const recStatusText = document.getElementById('recStatusText');
 
   let runToken = 0;
   let isPaused = false;
@@ -449,16 +419,12 @@
     }
   }
 
-  /* ---------- 复位到初始录音态
-     resetTimer=false（默认）：关闭转写只复位转写相关状态，计时器不受影响、持续走动；
-     resetTimer=true：仅重播按钮「重置到录音态」触发，连同计时器一起清零重新计时 ---------- */
-  function reset(resetTimer=false){
+  /* ---------- 复位到初始录音态：关闭转写只复位转写相关状态，计时器不受影响、持续走动 ---------- */
+  function reset(){
     ++runToken; // 打断进行中的打字机
     stage.classList.remove('transcribing');
     stage.classList.remove('paused');
     isPaused = false;
-    if(resetTimer){ elapsedSec = START_ELAPSED; renderTimer(); }
-    recStatusText.textContent = '正在录音';
     btnPause.title = '暂停';
     transcriptInner.querySelectorAll('.t-seg').forEach(n=>n.remove());
     transcriptInner.style.transform = 'translateY(0)';
@@ -471,19 +437,15 @@
     btnTranslate.style.transitionDelay = '0s';
     btnFont.style.transitionDelay = '.08s';
     [btnTranslate, btnFont].forEach(b=>b.classList.add('hidden'));
-    hint.textContent = '点击左下角「转写」按钮，触发转写交互';
-    hint.style.opacity = '1';
   }
 
   /* ---------- 暂停/继续录音：
-     1. 顶部状态由「正在录音」切换为「录音已暂停」；
-     2. 声纹（大声波 + 转写态小声纹）停止波动，统一为固定高度；
-     3. 转写文字末尾三个点的加载动画隐藏；
-     4. 暂停按钮图标切换为继续（播放）图标 ---------- */
+     1. 声纹（大声波 + 转写态小声纹）停止波动，统一为固定高度；
+     2. 转写文字末尾三个点的加载动画隐藏；
+     3. 暂停按钮图标切换为继续（播放）图标 ---------- */
   function togglePause(){
     const paused = stage.classList.toggle('paused');
     isPaused = paused; // 转写打字机会据此挂起/恢复出字
-    recStatusText.textContent = paused ? '录音已暂停' : '正在录音';
     btnPause.title = paused ? '继续' : '暂停';
   }
   btnPause.addEventListener('click', togglePause);
@@ -491,7 +453,6 @@
   /* ---------- 触发转写交互（手动点击） ---------- */
   function startTranscribe(){
     const token = ++runToken;
-    hint.style.opacity = '0';
 
     // 进入转写态：声波右移收缩、时间缩小、文本区滑入
     stage.classList.add('transcribing');
@@ -511,12 +472,9 @@
     setTimeout(()=>{ if(token===runToken) typewriter(token); }, 650);
   }
 
-  // 手动交互：点击转写触发、点击关闭转写 / 重播复位
-  // 注意：addEventListener 会把 MouseEvent 作为第一个参数传入回调，
-  // 必须用箭头函数显式传参，避免 event 对象被误当作 resetTimer 使用
+  // 手动交互：点击转写触发、点击关闭转写复位
   btnTranscribe.addEventListener('click', startTranscribe);
-  btnClose.addEventListener('click', ()=>reset(false));
-  document.getElementById('replay').addEventListener('click', ()=>reset(true));
+  btnClose.addEventListener('click', reset);
 
   // 初始进入即为录音态，等待用户手动点击（不自动播放）
   reset();
