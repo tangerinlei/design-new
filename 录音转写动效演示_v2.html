@@ -53,12 +53,14 @@
     padding-right:30px; overflow:hidden; z-index:20;
     /* 文字按正常文档流从上往下排列生长，超出可视高度后由 .t-inner 的 transform 平滑跟随，
        始终保持最新一行完整展示在底部、旧内容从顶部平滑淡出移出可视区 */
-    /* 展开动效：整块区域从右向左逐渐裁剪展开（clip-path 揭开），不做位移/回弹，避免弹跳感 */
-    -webkit-clip-path: inset(0 0 0 100%);
-    clip-path: inset(0 0 0 100%);
+    /* 展开动效：整块区域从左向右逐渐裁剪展开（clip-path 揭开，左边固定、右边界向右扫开），
+       保证文字始终按「先出现开头、再出现结尾」的正常阅读顺序显露，不会出现文字倒着（先露末尾再露开头）的错觉；
+       不做位移/回弹，避免弹跳感 */
+    -webkit-clip-path: inset(0 100% 0 0);
+    clip-path: inset(0 100% 0 0);
     transition: clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-mask-image .3s var(--ease), mask-image .3s var(--ease);
   }
-  #stage.transcribing .transcript{ -webkit-clip-path: inset(0 0 0 0%); clip-path: inset(0 0 0 0%); }
+  #stage.transcribing .transcript{ -webkit-clip-path: inset(0 0% 0 0); clip-path: inset(0 0% 0 0); }
   /* 文字未占满区域时不需要顶部渐隐；只有内容超出可视高度（真正需要裁剪）才启用顶部渐隐遮罩 */
   .transcript.has-overflow{
     -webkit-mask-image:linear-gradient(to bottom, transparent 0, rgba(0,0,0,1) 48px, rgba(0,0,0,1) 100%);
@@ -67,7 +69,6 @@
   /* 内容整体从上往下走字：新内容始终在下方追加生长，超出容器高度时整体平滑向下"走"，
      等效为可视窗口跟随最新文字向下滚动 */
   .t-inner{ width:100%; transform:translateY(0); transition:transform .45s var(--ease); will-change:transform; }
-  .t-preface{ color:#aec3e6; font-size:19px; line-height:1.7; margin-bottom:22px; }
   .t-seg{ margin-bottom:22px; transform:translateY(-14px); animation:segWalk .45s var(--ease) forwards; }
   @keyframes segWalk{ to{ transform:translateY(0); } }
   .t-time{ color:#7d8aa3; font-size:15px; margin-bottom:6px; }
@@ -102,9 +103,11 @@
     animation:wfwave 1s ease-in-out infinite;
   }
   @keyframes wfwave{ 0%,100%{ transform:scaleY(.3); } 50%{ transform:scaleY(1); } }
-  /* 转写态：声纹整体向下移动并缩小（宽度=转写文字区域1480px两端各收窄32px=1416px，高度再减小10px为88px，
-     距底部操作栏的间距相应增大）；同时条宽恢复为3px、波动幅度恢复为之前较小的效果 */
-  #stage.transcribing .waveform{ top:867px; width:1416px; height:88px; gap:8px; }
+  /* 转写态：声纹整体向下移动并缩小（宽度与转写文字区域一致1480px，高度再减小10px为78px，
+     距底部操作栏的间距相应增大）；同时条宽恢复为3px、波动幅度恢复为之前较小的效果。
+     注意：条数固定114根、条宽3px，gap需调大到10px使条+间距总宽贴近容器1480px，
+     避免因条数×(条宽+间距)总和小于容器宽度而在两端露出明显空白，让声纹视觉宽度与转写文字区一致 */
+  #stage.transcribing .waveform{ top:867px; width:1480px; height:78px; gap:10px; }
   #stage.transcribing .waveform .bar{ width:3px; animation:wfwaveSmall 1s ease-in-out infinite; }
   @keyframes wfwaveSmall{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
   /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的1/6（即原「一半」高度的再1/3，--wf-max-h 由JS在生成声纹时写入），
@@ -192,7 +195,6 @@
       <!-- 左侧转写文本 -->
       <div class="transcript" id="transcript">
         <div class="t-inner" id="transcriptInner">
-          <div class="t-preface">这也是二维中的我们和二维平面的关系，我们能轻易从三维进入平面上的一个圈。</div>
         </div>
       </div>
 
