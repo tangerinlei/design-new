@@ -44,9 +44,13 @@
     /* 展开动效：整块区域从右向左逐渐裁剪展开（clip-path 揭开），不做位移/回弹，避免弹跳感 */
     -webkit-clip-path: inset(0 0 0 100%);
     clip-path: inset(0 0 0 100%);
-    transition: clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-mask-image .3s var(--ease), mask-image .3s var(--ease);
+    transition: clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-mask-image .3s var(--ease), mask-image .3s var(--ease), width .6s var(--ease), margin-left .6s var(--ease);
   }
-  #stage.transcribing .transcript{ -webkit-clip-path: inset(0 0 0 0%); clip-path: inset(0 0 0 0%); }
+  /* 转写打开后，展示区域宽度收窄为 1280px（居中） */
+  #stage.transcribing .transcript{
+    width:1280px; margin-left:-640px;
+    -webkit-clip-path: inset(0 0 0 0%); clip-path: inset(0 0 0 0%);
+  }
   /* 文字未占满区域时不需要顶部渐隐；只有内容超出可视高度（真正需要裁剪）才启用顶部渐隐遮罩 */
   .transcript.has-overflow{
     -webkit-mask-image:linear-gradient(to bottom, transparent 0, rgba(0,0,0,1) 48px, rgba(0,0,0,1) 100%);
@@ -55,7 +59,6 @@
   /* 内容整体从上往下走字：新内容始终在下方追加生长，超出容器高度时整体平滑向下"走"，
      等效为可视窗口跟随最新文字向下滚动 */
   .t-inner{ width:100%; transform:translateY(0); transition:transform .45s var(--ease); will-change:transform; }
-  .t-preface{ color:#aec3e6; font-size:19px; line-height:1.7; margin-bottom:22px; }
   .t-seg{ margin-bottom:22px; transform:translateY(-14px); animation:segWalk .45s var(--ease) forwards; }
   @keyframes segWalk{ to{ transform:translateY(0); } }
   .t-time{ color:#7d8aa3; font-size:15px; margin-bottom:6px; }
@@ -71,67 +74,71 @@
   #stage.paused .dots{ display:none; }
 
   /* ================= 声波 ================= */
+  /* 转写开启前的声纹尺寸/位置/振幅按参考演示页（Rooms录音笔方案一demo）对齐：
+     容器1480×208、居中于top:326px，条宽5px、间距12px，振幅波动范围更大(.3~1) */
   .waveform{
-    position:absolute; left:50%; top:355px; width:960px; height:150px; /* 拉宽至舞台(1920px)的1/2 */
+    position:absolute; left:50%; top:326px; width:1480px; height:208px;
     transform:translateX(-50%) translateY(0) scale(1);
     transform-origin:center top;
-    display:flex; align-items:center; justify-content:center; gap:5px; overflow:hidden;
-    transition:opacity .7s var(--ease), transform .7s var(--ease);
+    display:flex; align-items:center; justify-content:center; gap:12px; overflow:hidden;
+    /* 关闭转写时（还原到此基础态）用更快的节奏向上长回 */
+    transition:opacity .4s var(--ease), transform .4s var(--ease);
     z-index:15;
     /* 两端渐隐降低透明度 */
     -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
     mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
   }
-  /* 声纹条效果：复用参考演示页（录音·转写交互动效演示）的纵向渐变色条 + 关键帧律动 */
+  /* 声纹条效果：纵向渐变色条 + 关键帧律动 */
   .waveform .bar{
-    width:3px; border-radius:3px; flex:0 0 auto; display:block;
+    width:5px; border-radius:3px; flex:0 0 auto; display:block;
     background:linear-gradient(180deg,#bcd6ff,#4a86e0);
     animation:wfwave 1s ease-in-out infinite;
   }
-  @keyframes wfwave{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
+  @keyframes wfwave{ 0%,100%{ transform:scaleY(.3); } 50%{ transform:scaleY(1); } }
   /* 转写态：大声波整体向下滑动、缩小并淡出，视觉上"下移"到底部小声纹所在位置后消失，
      与下方小声纹的淡入衔接，形成声纹从大变小、从上落到下的连贯动效；
      关闭转写时该 transform/opacity 自动还原，声波会同样地从下往上"长回"原位 */
   #stage.transcribing .waveform{
     opacity:0; pointer-events:none;
-    transform:translateX(-50%) translateY(452px) scale(.25);
+    transform:translateX(-50%) translateY(452px) scale(.135);
+    /* 打开转写时保持原有较慢的下移节奏，仅关闭时加快 */
+    transition:opacity .7s var(--ease), transform .7s var(--ease);
   }
   /* 暂停态：声纹停止波动，所有条统一高度 */
   #stage.paused .waveform .bar{ height:18% !important; animation:none !important; transform:none !important; opacity:.85; }
 
-  /* ================= 计时器（录音态：大号居中） ================= */
-  .timer-idle{
-    position:absolute; left:50%; bottom:166px; transform:translate(-50%,0);
-    color:#f2f6ff; font-size:104px; font-weight:800; letter-spacing:2px;
-    text-shadow:0 6px 30px rgba(0,0,0,0.4);
-    transition:opacity .5s var(--ease);
-    z-index:15; font-variant-numeric:tabular-nums;
-  }
-  .timer-idle .colon{ opacity:.9; }
-  #stage.transcribing .timer-idle{ opacity:0; pointer-events:none; }
-
-  /* ================= 转写态：小声纹 + 时间（作为一个整体在页面左右居中） ================= */
+  /* ================= 计时器（录音态：大号居中；转写态：随小声纹一起整体居中）
+     只保留一份计时器 DOM，转写开/关时不再做透明度交叉淡出淡入，
+     而是让小声纹用宽度收放"挪位"——整行始终用 translateX(-50%) 保持整体居中，
+     小声纹展开时数字被自然推向右侧、收起时数字自然滑回正中央，数字本身全程可见、不消失不重现 ================= */
   .time-row{
     position:absolute; left:50%; bottom:166px; transform:translateX(-50%);
-    display:flex; align-items:center; gap:16px;
-    opacity:0; transition:opacity .5s var(--ease) .18s; /* 延迟一点淡入，衔接大声波下移到位的时机 */
-    z-index:15; pointer-events:none;
+    display:flex; align-items:center;
+    z-index:15;
   }
-  #stage.transcribing .time-row{ opacity:1; }
   .mini-wave{
-    width:200px; height:64px;
+    width:0; height:64px; margin-right:0; opacity:0; overflow:hidden;
     display:flex; align-items:center; justify-content:center; gap:2.5px;
+    /* 关闭转写时：小声纹较快收拢消失，数字随之较快滑回居中 */
+    transition:width .35s var(--ease), margin-right .35s var(--ease), opacity .25s var(--ease);
+  }
+  /* 打开转写时：小声纹展开节奏稍慢并有一点延迟，衔接大声波下移到位的时机 */
+  #stage.transcribing .mini-wave{
+    width:200px; margin-right:16px; opacity:1;
+    transition:width .5s var(--ease) .1s, margin-right .5s var(--ease) .1s, opacity .4s var(--ease) .15s;
   }
   /* 小声纹颜色与录音态大声波保持一致（同一渐变色条），仅尺寸不同 */
   .mini-wave .mbar{
-    width:2.5px; border-radius:2px; background:linear-gradient(180deg,#bcd6ff,#4a86e0); transform-origin:center;
+    width:2.5px; border-radius:2px; background:linear-gradient(180deg,#bcd6ff,#4a86e0); transform-origin:center; flex:0 0 auto;
     animation:miniwave .9s ease-in-out infinite alternate;
   }
   @keyframes miniwave{ from{ transform:scaleY(.45); } to{ transform:scaleY(1); } }
   /* 暂停态：小声纹同样停止波动，所有条统一高度 */
   #stage.paused .mini-wave .mbar{ height:10px !important; animation:none !important; transform:none !important; opacity:.55; }
   .timer-mini{
-    color:#f2f6ff; font-size:44px; font-weight:800; letter-spacing:1px;
+    color:#f2f6ff; font-size:78px; font-weight:900; letter-spacing:1px;
+    -webkit-text-stroke:.5px currentColor;
+    text-shadow:0 6px 30px rgba(0,0,0,0.4);
     font-variant-numeric:tabular-nums; white-space:nowrap;
   }
   .timer-mini .colon{ opacity:.9; }
@@ -196,18 +203,15 @@
 
       <!-- 左侧转写文本 -->
       <div class="transcript" id="transcript">
-        <div class="t-inner" id="transcriptInner">
-          <div class="t-preface">这也是二维中的我们和二维平面的关系，我们能轻易从三维进入平面上的一个圈。</div>
-        </div>
+        <div class="t-inner" id="transcriptInner"></div>
       </div>
 
       <!-- 声波（录音态） -->
       <div class="waveform" id="waveform"></div>
 
-      <!-- 计时器（录音态：大号居中，从 00:00 持续走动） -->
-      <div class="timer-idle"><span id="timeMinIdle">00</span><span class="colon">:</span><span id="timeSecIdle">00</span></div>
-
-      <!-- 转写态：小声纹 + 时间（整体在页面左右居中，与上方计时器同步走动） -->
+      <!-- 计时器（从 00:00 持续走动，唯一一份 DOM）：
+           转写打开时左侧小声纹展开将其推向右侧，关闭时小声纹收起它滑回正中央，
+           数字本身始终可见，只挪动位置，不做消失/重新出现 -->
       <div class="time-row" id="timeRow">
         <div class="mini-wave" id="miniWave"></div>
         <div class="timer-mini"><span id="timeMinMini">00</span><span class="colon">:</span><span id="timeSecMini">00</span></div>
@@ -278,7 +282,7 @@
      纵向渐变色条 + 正弦振幅包络（中间高、两侧低）+ CSS 关键帧持续律动，
      容器整体已通过 mask 在两端做透明度渐隐 ---------- */
   const wf = document.getElementById('waveform');
-  const BAR_COUNT = 114;
+  const BAR_COUNT = 135; // 与参考演示页（Rooms录音笔方案一demo）条数一致
   for(let i=0;i<BAR_COUNT;i++){
     const b = document.createElement('div');
     b.className = 'bar';
@@ -327,9 +331,7 @@
   let runToken = 0;
   let isPaused = false;
 
-  /* ---------- 计时器：每秒走动一次，暂停时挂起，大号/小号两处展示实时同步 ---------- */
-  const timeMinIdle = document.getElementById('timeMinIdle');
-  const timeSecIdle = document.getElementById('timeSecIdle');
+  /* ---------- 计时器：每秒走动一次，暂停时挂起（唯一一份 DOM，只挪位置不重建） ---------- */
   const timeMinMini = document.getElementById('timeMinMini');
   const timeSecMini = document.getElementById('timeSecMini');
   const START_ELAPSED = 0; // 从 00:00 开始持续走动
@@ -337,7 +339,6 @@
   function renderTimer(){
     const m = String(Math.floor(elapsedSec/60)).padStart(2,'0');
     const s = String(elapsedSec%60).padStart(2,'0');
-    timeMinIdle.textContent = m; timeSecIdle.textContent = s;
     timeMinMini.textContent = m; timeSecMini.textContent = s;
   }
   renderTimer();
@@ -370,7 +371,7 @@
 
   /* ---------- 打字机 ---------- */
   async function typewriter(token){
-    // 清空旧的分段（保留 preface）
+    // 清空旧的分段
     transcriptInner.querySelectorAll('.t-seg').forEach(n=>n.remove());
     adjustScroll();
 

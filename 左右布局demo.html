@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>录音·转写 交互动效演示</title>
+<style>
+  :root{
+    --ease: cubic-bezier(0, 0, 0.2, 1); /* ease-out */
+    --dur: 0.5s;
+    --text: #e8edf5;
+    --sub: #8794aa;
+    --red: #ff4d4f;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{
+    width:100%; height:100%;
+    background:#05080f;
+    font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+
+  /* 舞台 16:9，基准 1920x1080，自适应缩放 */
+  .stage{
+    position:relative;
+    width:1920px; height:1080px;
+    border-radius:25px;
+    overflow:hidden;
+    color:var(--text);
+    box-shadow:0 53px 142px rgba(0,0,0,.6);
+    background:
+      radial-gradient(120% 90% at 88% 8%, rgba(60,110,190,.38) 0%, rgba(30,60,110,0) 45%),
+      radial-gradient(90% 120% at 6% 92%, rgba(30,70,130,.30) 0%, rgba(20,45,90,0) 50%),
+      linear-gradient(140deg, #0c1c34 0%, #12294a 42%, #0e2543 70%, #0a1b32 100%);
+    transform-origin:center center;
+  }
+  .stage::before{
+    content:""; position:absolute; top:-40%; right:-15%;
+    width:1600px; height:1600px; border-radius:50%;
+    background:radial-gradient(circle at 30% 70%, rgba(80,130,210,.12), transparent 60%);
+    pointer-events:none;
+  }
+  .stage::after{
+    content:""; position:absolute; bottom:-30%; left:-10%;
+    width:1244px; height:1244px; border-radius:50%;
+    background:radial-gradient(circle at 60% 40%, rgba(40,90,160,.10), transparent 62%);
+    pointer-events:none;
+  }
+
+  /* 顶栏（仅文件名） */
+  .topbar{
+    position:absolute; top:0; left:0; right:0; height:71px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:25px; color:#c6d0de; letter-spacing:.5px; z-index:50;
+  }
+
+  /* ============ 左侧转写文本面板 ============ */
+  .transcript{
+    position:absolute; top:71px; bottom:132px; left:0; width:1152px;
+    padding:46px 53px 14px;
+    overflow:hidden;
+    opacity:0; transform:translateX(124px);
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    z-index:20;
+    -webkit-mask-image:linear-gradient(180deg,#000 88%,transparent);
+  }
+  .stage.on .transcript{ opacity:1; transform:translateX(0); }
+  .msg{
+    margin-bottom:28px;
+    opacity:0; transform:translateX(-50px);
+    transition:opacity .5s var(--ease), transform .5s var(--ease);
+  }
+  .stage.on .msg{ opacity:1; transform:translateX(0); }
+  .msg .ts{ font-size:21px; color:var(--sub); margin-bottom:9px; }
+  .msg .tx{ font-size:26px; line-height:1.75; color:#d5deec; }
+  .stage.on .msg:nth-child(1){ transition-delay:.20s; }
+  .stage.on .msg:nth-child(2){ transition-delay:.30s; }
+  .stage.on .msg:nth-child(3){ transition-delay:.40s; }
+  .stage.on .msg:nth-child(4){ transition-delay:.50s; }
+  .stage.on .msg:nth-child(5){ transition-delay:.60s; }
+  .stage.on .msg:nth-child(6){ transition-delay:.70s; }
+
+  /* 转写态左右分隔竖线 */
+  .divider{
+    position:absolute; top:124px; bottom:124px; left:1152px; width:1px;
+    background:linear-gradient(180deg,transparent,rgba(255,255,255,.14) 18%,rgba(255,255,255,.14) 82%,transparent);
+    opacity:0; transition:opacity var(--dur) var(--ease); transition-delay:.1s; z-index:15;
+  }
+  .stage.on .divider{ opacity:1; }
+
+  /* ============ 录音模块 ============ */
+  .recorder{
+    position:absolute; top:50%; left:50%;
+    width:924px;
+    transform:translate(-50%,-50%);
+    transition:transform var(--dur) var(--ease), width var(--dur) var(--ease);
+    display:flex; flex-direction:column; align-items:center;
+    z-index:30;
+  }
+  /* 转写态：右移 + 靠左对齐（对齐图1右侧样式）+ 等比收窄 */
+  .stage.on .recorder{
+    width:520px;
+    align-items:flex-start;
+    /* 居中于右侧区域(分割线1152~舞台1920, 中心1536)，左右各留约124px，避免挤线且用满页面宽度 */
+    transform:translate(calc(-50% + 576px),-50%);
+  }
+
+  .rec-status{
+    display:flex; align-items:center; gap:14px; font-size:28px; color:#d5deec;
+    transition:font-size var(--dur) var(--ease);
+  }
+  .stage.on .rec-status{ font-size:23px; gap:11px; }
+  .rec-status .dot{
+    width:16px; height:16px; border-radius:50%; background:var(--red);
+    box-shadow:0 0 14px rgba(255,77,79,.8); animation:blink 1.4s infinite;
+    transition:width var(--dur) var(--ease), height var(--dur) var(--ease);
+  }
+  .stage.on .rec-status .dot{ width:13px; height:13px; }
+  @keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .rec-timer{
+    font-size:103px; font-weight:700; letter-spacing:4px; margin:25px 0 46px;
+    font-variant-numeric:tabular-nums; color:#f2f6fc;
+    transition:font-size var(--dur) var(--ease), margin var(--dur) var(--ease);
+  }
+  .stage.on .rec-timer{ font-size:64px; letter-spacing:3px; margin:14px 0 30px; }
+
+  .waveform{
+    display:flex; align-items:center; justify-content:center; gap:9px;
+    height:121px; width:100%;
+    transition:height var(--dur) var(--ease), gap var(--dur) var(--ease);
+  }
+  .stage.on .waveform{ height:80px; gap:3px; justify-content:flex-start; }
+  .waveform i{
+    width:5px; border-radius:5px; display:block; flex:0 0 auto;
+    background:linear-gradient(180deg,#bcd6ff,#4a86e0);
+    animation:wave 1s ease-in-out infinite;
+  }
+  @keyframes wave{ 0%,100%{ transform:scaleY(.55);} 50%{ transform:scaleY(1);} }
+
+  .rec-controls{
+    margin-top:53px; display:flex; align-items:center; gap:28px;
+    transition:margin var(--dur) var(--ease);
+  }
+  .stage.on .rec-controls{ margin-top:46px; }
+  .btn-circle{
+    width:100px; height:100px; border-radius:50%; border:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform .2s, background .2s, width var(--dur) var(--ease), height var(--dur) var(--ease);
+  }
+  .stage.on .btn-circle{ width:89px; height:89px; }
+  .btn-circle:hover{ transform:scale(1.06); }
+  .btn-pause{ background:rgba(255,255,255,.10); }
+  .btn-stop{ background:var(--red); box-shadow:0 11px 32px rgba(255,77,79,.35); }
+
+  /* 暂停/播放图标切换 */
+  .btn-pause .ic-play{ display:none; }
+  .stage.paused .btn-pause .ic-pause{ display:none; }
+  .stage.paused .btn-pause .ic-play{ display:block; }
+
+  /* ============ 暂停态：文案 / 状态点 / 音轨 ============ */
+  /* 状态点：红色闪烁 → 灰色静止 */
+  .stage.paused .rec-status{ color:#aab6c8; }
+  .stage.paused .rec-status .dot{
+    background:#8794aa; box-shadow:none; animation:none;
+  }
+  /* 音轨停止：切换为等高的静态细条（贴合截图），不再跳动 */
+  .stage.paused .waveform i{
+    height:18% !important;
+    animation:none;
+    opacity:.9;
+  }
+
+  /* 转写药丸按钮：转写态渐隐收起 */
+  .btn-transcribe{
+    display:flex; align-items:center; gap:11px;
+    height:100px; padding:0 40px; border:none; border-radius:50px; cursor:pointer;
+    background:rgba(255,255,255,.10); color:#e8edf5; font-size:27px; white-space:nowrap;
+    overflow:hidden; max-width:231px; margin-right:0;
+    transition:opacity var(--dur) var(--ease), max-width var(--dur) var(--ease),
+               margin var(--dur) var(--ease), padding var(--dur) var(--ease), transform .2s;
+  }
+  .btn-transcribe:hover{ background:rgba(255,255,255,.16); }
+  .stage.on .btn-transcribe{
+    opacity:0; max-width:0; padding:0; margin-right:-28px; pointer-events:none;
+  }
+
+  /* 收起转写药丸按钮：录音态隐藏，转写态显示于暂停/停止前方 */
+  .btn-collapse{
+    display:flex; align-items:center; gap:8px;
+    height:89px; border:none; border-radius:43px; cursor:pointer;
+    background:rgba(255,255,255,.10); color:#e8edf5; font-size:27px; white-space:nowrap;
+    overflow:hidden; max-width:0; padding:0; margin-right:-28px; opacity:0; pointer-events:none;
+    transition:opacity var(--dur) var(--ease), max-width var(--dur) var(--ease),
+               margin var(--dur) var(--ease), padding var(--dur) var(--ease), transform .2s;
+  }
+  .btn-collapse:hover{ background:rgba(255,255,255,.16); }
+  .btn-collapse svg{ opacity:.7; }
+  .stage.on .btn-collapse{
+    opacity:1; max-width:300px; padding:0 36px; margin-right:0; pointer-events:auto;
+  }
+
+  /* ============ 底部工具栏（转写态）============ */
+  .bottom-tools{
+    position:absolute; left:0; width:1152px; bottom:39px;
+    padding-right:53px;
+    transform:translateY(14px);
+    display:flex; align-items:center; justify-content:flex-end; gap:25px;
+    opacity:0; pointer-events:none;
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    transition-delay:.15s; z-index:40;
+  }
+  .stage.on .bottom-tools{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  .tool{
+    height:71px; border-radius:36px; border:none; cursor:pointer;
+    background:rgba(255,255,255,.08); color:#dbe3ef;
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    transition:background .2s;
+  }
+  .tool:hover{ background:rgba(255,255,255,.15); }
+  .tool.icon-only{ width:71px; }
+  .tool.close{ padding:0 32px; font-size:25px; }
+
+  svg{ display:block; }
+
+  .tip{
+    position:absolute; top:92px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.35); color:#9fb0c8; font-size:21px;
+    padding:9px 25px; border-radius:36px; z-index:60;
+    backdrop-filter:blur(4px); pointer-events:none;
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <!-- 顶栏（仅文件名） -->
+    <div class="topbar">20260717 录音文件</div>
+
+    <!-- 左侧转写文本 -->
+    <div class="transcript">
+      <div class="msg">
+        <div class="tx">你看原来我们不是这样的嘛，然后现在是只有元宝纪要，没有完会的情况，就假如说三个人开会，其中有一个人退出了，那这个会议其实还在，它只显示这个元宝纪要。</div>
+      </div>
+      <div class="msg">
+        <div class="ts">00:20</div>
+        <div class="tx">背景功能丰富，可显示时钟、照片，展示重要通知等。将在那个行星系中游荡，它们合在一起也没有细菌的亿万分之一那么大。越来越多的智子将在那个行星系中游荡。</div>
+      </div>
+      <div class="msg">
+        <div class="ts">00:35</div>
+        <div class="tx">你看原来我们不是这样的嘛，然后现在是只有元宝纪要，没有完会的情况，就假如说三个人开会，其中有一个人退出了，那这个会议其实还在，它只显示这个元宝纪要。但是底下会有一个瞬态，就是我这个页面就底下会有一个损态。</div>
+      </div>
+      <div class="msg">
+        <div class="ts">00:50</div>
+        <div class="tx">你看原来我们不是这样的嘛，然后现在是只有元宝纪要，没有完会的情况，就假如说三个人开会，其中有一个人退出了，那这个会议其实还在，它只显示这个元宝纪要。但是底下会有一个瞬态，就是我这个页面就底下会有一个损态。</div>
+      </div>
+      <div class="msg">
+        <div class="ts">01:10</div>
+        <div class="tx">然后就是滚动的效果，就滑动的时候的效果，它这里有个遮罩什么的，这个就是滚动的一个效果。但其实我觉得立昌这个稿子已经差不多，已经还原，但对你。</div>
+      </div>
+      <div class="msg">
+        <div class="ts">01:35</div>
+        <div class="tx">好的，今天的会议就开到这里，待办事项我将整理成文档发送到讨论组中，接下来的日子希望大家继续保持高效协作，全力以赴推进各项工作，期待与大家携手并进，共同创造下半年的辉煌 •••</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 录音模块 -->
+    <div class="recorder" id="recorder">
+      <div class="rec-status"><span class="dot"></span><span id="recStatusText">录音中</span></div>
+      <div class="rec-timer" id="recTimer">00<span style="opacity:.6">:</span>37</div>
+      <div class="waveform" id="waveform"></div>
+      <div class="rec-controls">
+        <button class="btn-transcribe" id="btnTranscribe">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.584 13.998C27.3416 13.9983 31.1988 17.8557 31.1992 22.6133V29.332C31.199 30.4363 30.3035 31.3318 29.1992 31.332H21.1992C16.4128 31.332 12.5322 27.4515 12.5322 22.665C12.5324 17.8787 16.4129 13.998 21.1992 13.998H22.584ZM18.4814 18.002C18.1403 18.0021 17.8634 18.279 17.8633 18.6201V20.9482C17.8635 21.0714 17.9658 21.1707 18.0889 21.167C18.1963 21.1634 18.2844 21.0809 18.3057 20.9756C18.38 20.6053 18.5356 20.2773 18.7256 20.002H21.4238C21.4187 22.253 21.4121 24.5048 21.4121 26.7559H20.251C20.0939 26.756 19.9646 26.8821 19.9609 27.0391C19.9576 27.2011 20.0889 27.3348 20.251 27.335H24.8223C24.9788 27.3349 25.1063 27.2073 25.1064 27.0508C25.1061 26.8954 24.9806 26.7691 24.8252 26.7676L23.4805 26.7559L23.4902 20.002H26.1387C26.4114 20.4064 26.6195 20.837 26.7188 21.0596C26.7596 21.1511 26.85 21.2117 26.9502 21.2119C27.086 21.2118 27.1971 21.1016 27.1973 20.9658V18.6436C27.197 18.2892 26.9091 18.002 26.5547 18.002H18.4814ZM10.8701 0.666016C15.8405 0.666194 19.8701 4.69561 19.8701 9.66602C19.8701 10.8576 19.6384 11.9953 19.2178 13.0361C16.0127 13.5454 13.3505 15.6865 12.1104 18.5811C11.7049 18.637 11.2909 18.666 10.8701 18.666H3.20312C2.09858 18.666 1.20316 17.7706 1.20312 16.666V9.28125C1.20322 4.52324 5.06034 0.666095 9.81836 0.666016H10.8701ZM11.0635 3.79883C10.8583 3.79891 10.6611 3.88176 10.5186 4.0293L10.5166 4.03125C10.2431 4.32257 10.2431 4.77705 10.5166 5.06836L10.5215 5.07324C12.8987 7.45582 12.899 11.3139 10.5215 13.6963C10.2207 13.9978 10.2205 14.4867 10.5215 14.7881C10.8229 15.0886 11.3119 15.0887 11.6133 14.7881V14.7871C14.564 11.8069 14.5608 7.00472 11.6064 4.02832C11.464 3.8816 11.268 3.79894 11.0635 3.79883ZM8.97949 5.9375C8.68632 5.67535 8.24238 5.67533 7.94922 5.9375V5.93652L7.93555 5.95117C7.66796 6.24352 7.66776 6.69312 7.93555 6.98535L7.94141 6.99121C9.26972 8.32713 9.26981 10.4854 7.94141 11.8213L7.93359 11.8291C7.67173 12.1223 7.67153 12.5663 7.93359 12.8594L7.93262 12.8604L7.94727 12.873C8.23951 13.1407 8.68917 13.1406 8.98145 12.873L8.98926 12.8652C10.8574 10.9379 10.8573 7.87471 8.98926 5.94727H8.99023L8.97949 5.9375ZM6.52148 8.51465C6.16424 8.36783 5.75347 8.45137 5.48145 8.72559C5.30271 8.90319 5.2012 9.14548 5.20117 9.39746C5.20132 9.64939 5.30267 9.89084 5.48145 10.0684C5.75347 10.3428 6.16413 10.4262 6.52148 10.2793C6.87877 10.1322 7.11207 9.7838 7.1123 9.39746C7.11226 9.01092 6.87893 8.66179 6.52148 8.51465Z" fill="currentColor"/>
+          </svg>
+          转写
+        </button>
+        <button class="btn-collapse" id="btnCollapse">
+          <svg width="28" height="28" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 10L25 19L16 28" stroke="#e8edf5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          收起转写
+        </button>
+        <button class="btn-circle btn-pause" id="btnPause" title="暂停">
+          <svg class="ic-pause" width="34" height="34" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.31836 7.4541V29.8177" stroke="#fff" stroke-width="7.45455" stroke-linecap="round"/><path d="M27.9551 7.4541V29.8177" stroke="#fff" stroke-width="7.45455" stroke-linecap="round"/></svg>
+          <svg class="ic-play" width="34" height="34" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.4551 34.0044V7.8138C10.4551 4.4738 14.1775 2.48162 16.9566 4.33432L36.5995 17.4296C39.0824 19.0849 39.0824 22.7333 36.5995 24.3886L16.9565 37.4839C14.1775 39.3366 10.4551 37.3444 10.4551 34.0044Z" fill="#fff"/></svg>
+        </button>
+        <button class="btn-circle btn-stop" title="停止">
+          <svg width="30" height="30" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.72656" y="3.72754" width="29.8182" height="29.8182" rx="7.45455" fill="#fff"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 底部工具栏（转写态） -->
+    <div class="bottom-tools">
+      <button class="tool icon-only" title="翻译">
+        <svg width="32" height="32" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9.54199 28.5664C10.3358 28.5664 10.9794 29.2101 10.9795 30.0039V33.6914C10.9795 34.634 11.7439 35.3984 12.6865 35.3984H16.374C17.1679 35.3984 17.8115 36.042 17.8115 36.8359C17.8115 37.6298 17.1679 38.2734 16.374 38.2734H12.6865C10.1561 38.2734 8.10449 36.2219 8.10449 33.6914V30.0039C8.10463 29.2102 8.74828 28.5665 9.54199 28.5664ZM30.5039 21.4951C31.0716 21.4951 31.5864 21.8292 31.8174 22.3477L36.2754 32.3662L38.0625 36.2266C38.3959 36.947 38.0818 37.8013 37.3613 38.1348C36.641 38.4678 35.7865 38.1539 35.4531 37.4336L34.0527 34.4072H26.9561L25.5547 37.4336C25.2212 38.1539 24.3669 38.468 23.6465 38.1348C22.9263 37.8012 22.6121 36.9469 22.9453 36.2266L24.7324 32.3662L29.1904 22.3477L29.2373 22.2529C29.4861 21.789 29.9718 21.4952 30.5039 21.4951ZM28.251 31.5322H32.7578L30.5039 26.4678L28.251 31.5322ZM16.4111 7.73242C17.2049 7.73242 17.8484 8.37619 17.8486 9.16992V11.4902H21.4355C23.4184 11.4905 25.0264 13.0981 25.0264 15.0811V19.7979C25.026 21.7805 23.4182 23.3875 21.4355 23.3877H17.8486V26.4639C17.8486 27.2577 17.205 27.9014 16.4111 27.9014C15.6174 27.9012 14.9737 27.2576 14.9736 26.4639V23.3877H11.3877C9.40483 23.3877 7.79722 21.7806 7.79688 19.7979V15.0811C7.79688 13.098 9.40461 11.4902 11.3877 11.4902H14.9736V9.16992C14.9738 8.3763 15.6175 7.7326 16.4111 7.73242ZM17.8486 20.5127H21.4355C21.8304 20.5125 22.151 20.1927 22.1514 19.7979V15.0811C22.1514 14.6859 21.8306 14.3655 21.4355 14.3652H17.8486V20.5127ZM11.3877 14.3652C10.9924 14.3652 10.6719 14.6858 10.6719 15.0811V19.7979C10.6722 20.1928 10.9926 20.5127 11.3877 20.5127H14.9736V14.3652H11.3877ZM32.959 9.06836C35.4894 9.06839 37.541 11.1199 37.541 13.6504V17.3379C37.5407 18.1314 36.8971 18.7753 36.1035 18.7754C35.3099 18.7753 34.6664 18.1315 34.666 17.3379V13.6504C34.666 12.7077 33.9016 11.9434 32.959 11.9434H29.2715C28.4778 11.9433 27.8342 11.2996 27.834 10.5059C27.834 9.71199 28.4776 9.06842 29.2715 9.06836H32.959Z" fill="#dbe3ef"/>
+        </svg>
+      </button>
+      <button class="tool icon-only" title="字号">
+        <svg width="32" height="32" viewBox="0 0 41 41" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15.5742 7.24521C16.5228 5.53554 19.0096 5.53537 19.958 7.24521L20.0479 7.42294L23.2168 14.2892C22.8093 14.6497 22.4394 15.0722 22.1211 15.5577L22.0273 15.6983L21.8018 16.1095L21.7266 16.2462L21.6611 16.3858L21.2803 17.2091L17.7656 9.59286L12.3115 21.4102H19.3418L17.9648 24.3927H10.9355L6.83984 33.2667H3.55664L15.4844 7.42294L15.5742 7.24521Z" fill="#dbe3ef"/>
+          <path d="M25.709 18.0852C26.437 16.7725 28.3465 16.7722 29.0742 18.0852L29.1426 18.221L36.9219 35.0745H33.6377L31.3232 30.0598H23.46L21.1455 35.0745H17.8613L25.6406 18.221L25.709 18.0852ZM24.8369 27.0774H29.9463L27.3916 21.5413L24.8369 27.0774Z" fill="#dbe3ef"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+<script>
+  // 生成声波波形条（高度用百分比，随模块高度自适应）
+  const wf = document.getElementById('waveform');
+  const N = 62;
+  for(let i=0;i<N;i++){
+    const bar = document.createElement('i');
+    const env = Math.sin((i/(N-1))*Math.PI);          // 中间高两侧低
+    const h = 14 + env*78*(0.45+Math.random()*0.55);  // 14% ~ 92%
+    bar.style.height = h.toFixed(0)+'%';
+    // 暂停态静态高度：矮而均匀、轻微起伏（贴合截图内音轨样式）
+    const ph = 12 + Math.random()*16;                 // 12% ~ 28%
+    bar.style.setProperty('--ph', ph.toFixed(0)+'%');
+    bar.style.animationDelay = (-(Math.random()*1)).toFixed(2)+'s';
+    bar.style.animationDuration = (0.7+Math.random()*0.7).toFixed(2)+'s';
+    wf.appendChild(bar);
+  }
+
+  const stage = document.getElementById('stage');
+  const btnT = document.getElementById('btnTranscribe');
+  const btnCollapse = document.getElementById('btnCollapse');
+  btnT.addEventListener('click', ()=> stage.classList.add('on'));
+  btnCollapse.addEventListener('click', ()=> stage.classList.remove('on'));
+
+  // 计时器：录音中每秒递增，暂停时保持不动
+  const recTimer = document.getElementById('recTimer');
+  let seconds = 37;                 // 初始 00:37
+  function renderTimer(){
+    const m = String(Math.floor(seconds/60)).padStart(2,'0');
+    const s = String(seconds%60).padStart(2,'0');
+    recTimer.innerHTML = m + '<span style="opacity:.6">:</span>' + s;
+  }
+  let timerId = setInterval(()=>{ seconds++; renderTimer(); }, 1000);
+
+  // 暂停 / 继续
+  const btnPause = document.getElementById('btnPause');
+  const recStatusText = document.getElementById('recStatusText');
+  btnPause.addEventListener('click', ()=>{
+    const paused = stage.classList.toggle('paused');
+    recStatusText.textContent = paused ? '录音已暂停' : '录音中';
+    btnPause.title = paused ? '继续' : '暂停';
+    if(paused){
+      clearInterval(timerId); timerId = null;          // 暂停：停止计时
+    }else if(!timerId){
+      timerId = setInterval(()=>{ seconds++; renderTimer(); }, 1000); // 继续
+    }
+  });
+
+  // 自适应缩放
+  function fit(){
+    const s = Math.min(window.innerWidth/1920, window.innerHeight/1080) * 0.96;
+    stage.style.transform = 'scale('+s+')';
+  }
+  window.addEventListener('resize', fit); fit();
+</script>
+</body>
+</html>
