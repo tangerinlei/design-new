@@ -85,9 +85,10 @@
   /* ================= 声波 ================= */
   .waveform{
     position:absolute; left:50%; top:355px; width:960px; height:150px; /* 拉宽至舞台(1920px)的1/2 */
-    transform:translateX(-50%);
+    transform:translateX(-50%) translateY(0) scale(1);
+    transform-origin:center top;
     display:flex; align-items:center; justify-content:center; gap:5px; overflow:hidden;
-    transition:all .7s var(--ease);
+    transition:opacity .7s var(--ease), transform .7s var(--ease);
     z-index:15;
     /* 两端渐隐降低透明度 */
     -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
@@ -100,8 +101,13 @@
     animation:wfwave 1s ease-in-out infinite;
   }
   @keyframes wfwave{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
-  /* 转写态：大声波直接淡出隐藏，改由下方独立的小声纹展示 */
-  #stage.transcribing .waveform{ opacity:0; pointer-events:none; }
+  /* 转写态：大声波整体向下滑动、缩小并淡出，视觉上"下移"到底部小声纹所在位置后消失，
+     与下方小声纹的淡入衔接，形成声纹从大变小、从上落到下的连贯动效；
+     关闭转写时该 transform/opacity 自动还原，声波会同样地从下往上"长回"原位 */
+  #stage.transcribing .waveform{
+    opacity:0; pointer-events:none;
+    transform:translateX(-50%) translateY(452px) scale(.25);
+  }
   /* 暂停态：声纹停止波动，所有条统一高度 */
   #stage.paused .waveform .bar{ height:18% !important; animation:none !important; transform:none !important; opacity:.85; }
 
@@ -120,7 +126,7 @@
   .time-row{
     position:absolute; left:50%; bottom:166px; transform:translateX(-50%);
     display:flex; align-items:center; gap:16px;
-    opacity:0; transition:opacity .5s var(--ease);
+    opacity:0; transition:opacity .5s var(--ease) .18s; /* 延迟一点淡入，衔接大声波下移到位的时机 */
     z-index:15; pointer-events:none;
   }
   #stage.transcribing .time-row{ opacity:1; }
@@ -128,8 +134,9 @@
     width:200px; height:64px;
     display:flex; align-items:center; justify-content:center; gap:2.5px;
   }
+  /* 小声纹颜色与录音态大声波保持一致（同一渐变色条），仅尺寸不同 */
   .mini-wave .mbar{
-    width:2.5px; border-radius:2px; background:#cdddfa; transform-origin:center;
+    width:2.5px; border-radius:2px; background:linear-gradient(180deg,#bcd6ff,#4a86e0); transform-origin:center;
     animation:miniwave .9s ease-in-out infinite alternate;
   }
   @keyframes miniwave{ from{ transform:scaleY(.45); } to{ transform:scaleY(1); } }
