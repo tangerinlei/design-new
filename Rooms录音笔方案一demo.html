@@ -464,8 +464,8 @@
       [btnTranslate, btnFont].forEach(b=>b.classList.remove('hidden'));
     });
 
-    // 声纹与文本区就位后启动打字机
-    setTimeout(()=>{ if(token===runToken) typewriter(token); }, 650);
+    // 上方大声纹渐隐消失的同时，转写文字同步开始出现（不再等待声纹就位）
+    typewriter(token);
   }
 
   // 手动交互：点击转写触发、点击收起转写 / 重播复位
