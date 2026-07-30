@@ -48,7 +48,13 @@
     clip-path: inset(0 100% 0 0);
     transition: clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-mask-image .3s var(--ease), mask-image .3s var(--ease);
   }
-  #stage.transcribing .transcript{ -webkit-clip-path: inset(0 0% 0 0); clip-path: inset(0 0% 0 0); }
+  /* 开启转写后：转写文字区宽度缩小至 1080px（居中，margin-left 相应改为 -540px），
+     宽度带过渡以配合展开动效 */
+  #stage.transcribing .transcript{
+    -webkit-clip-path: inset(0 0% 0 0); clip-path: inset(0 0% 0 0);
+    width:1080px; margin-left:-540px;
+    transition: clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-clip-path .6s cubic-bezier(0.33, 0, 0.2, 1), -webkit-mask-image .3s var(--ease), mask-image .3s var(--ease), width .5s var(--ease), margin-left .5s var(--ease);
+  }
   /* 文字未占满区域时不需要顶部渐隐；只有内容超出可视高度（真正需要裁剪）才启用顶部渐隐遮罩 */
   .transcript.has-overflow{
     -webkit-mask-image:linear-gradient(to bottom, transparent 0, rgba(0,0,0,1) 48px, rgba(0,0,0,1) 100%);
@@ -71,38 +77,49 @@
   /* 暂停态：转写文字末尾不再出现三个点的加载动画 */
   #stage.paused .dots{ display:none; }
 
-  /* ================= 声纹（未开启转写：大尺寸居中显示，1480×208px，波动幅度更大；
-     开启转写后：向下移动并缩小至转写文字区域宽度两端各收窄32px（1416px）、高度98px，波动幅度更小，
-     居中展示于底部操作栏上方24px处。暂停时统一冻结为静态高度、停止律动，两种状态通用同一套元素与规则） ================= */
+  /* ================= 声纹 =================
+     拆为两个独立元素、各自固定位置，不做位移过渡：
+     - 大声纹 .waveform.big：未开启转写时居中大尺寸展示（1480×208）；点击转写后【整体就地渐隐消失】
+     - 转写音轨 .waveform.small：开启转写后在底部操作栏上方【原地淡入逐渐出现】（1080×78）
+     暂停时两者均冻结为静态高度、停止律动 ================= */
   .waveform{
-    position:absolute; left:50%; top:326px; width:1480px; height:208px;
+    position:absolute; left:50%;
     transform:translateX(-50%);
-    display:flex; align-items:center; justify-content:center; gap:12px; overflow:hidden;
-    transition:opacity .5s var(--ease), top .5s var(--ease), width .5s var(--ease), height .5s var(--ease);
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
     z-index:15;
     /* 两端渐隐降低透明度 */
     -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
     mask-image:linear-gradient(90deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+    transition:opacity .5s var(--ease);
   }
-  /* 声纹条效果：纵向渐变色条 + 关键帧律动（未开启转写：条宽5px、波动幅度更大） */
+  /* 大声纹：居中大尺寸，条宽5px、波动幅度更大 */
+  .waveform.big{ top:326px; width:1480px; height:208px; gap:12px; opacity:1; }
+  /* 转写音轨：底部操作栏上方，条宽3px、间距5px、高度78px；默认隐藏，开启转写后整体淡入出现 */
+  .waveform.small{ top:867px; width:1080px; height:78px; gap:5px; opacity:0; pointer-events:none; }
+
+  /* 声纹条效果：纵向渐变色条 + 关键帧律动 */
   .waveform .bar{
-    width:5px; border-radius:3px; flex:0 0 auto; display:block;
+    border-radius:3px; flex:0 0 auto; display:block;
     background:linear-gradient(180deg,#bcd6ff,#4a86e0);
-    animation:wfwave 1s ease-in-out infinite;
   }
+  .waveform.big .bar{ width:5px; animation:wfwave 1s ease-in-out infinite; }
+  .waveform.small .bar{ width:3px; animation:wfwaveSmall var(--wave-dur, 1s) ease-in-out infinite; }
   @keyframes wfwave{ 0%,100%{ transform:scaleY(.3); } 50%{ transform:scaleY(1); } }
-  /* 转写态：声纹整体向下移动并缩小（宽度与转写文字区域一致1480px，高度再减小10px为78px，
-     距底部操作栏的间距相应增大）；条宽保持3px、间距8px（播放中/暂停中一致）。
-     注意：条数由JS的BAR_COUNT统一控制（已从114增加到135根，见JS注释），
-     135×3px条宽+134×8px间距≈1477px，贴近容器1480px，两端不再露出明显空白，
-     该条数对播放态和暂停态均生效，两态视觉宽度均与转写文字区对齐 */
-  #stage.transcribing .waveform{ top:867px; width:1480px; height:78px; gap:8px; }
-  #stage.transcribing .waveform .bar{ width:3px; animation:wfwaveSmall 1s ease-in-out infinite; }
   @keyframes wfwaveSmall{ 0%,100%{ transform:scaleY(.55); } 50%{ transform:scaleY(1); } }
+
+  /* 开启转写：大声纹整体就地渐隐消失；转写音轨整体淡入出现（两者均不发生位移） */
+  #stage.transcribing .waveform.big{ opacity:0; pointer-events:none; }
+  #stage.transcribing .waveform.small{ opacity:1; pointer-events:auto; }
+
   /* 暂停态：声纹冻结为等高的静态线，高度统一为波动最高点的1/12（--wf-max-h 由JS在生成声纹时写入），
-     开启转写前/后的暂停态通用同一套元素与规则，停止律动，用 height 覆盖各条原本不同的内联高度，做到真正等高 */
-  #stage.paused .waveform .bar{
-    animation:none !important; transform:none !important;
+     停止律动，用 height 覆盖各条原本不同的内联高度，做到真正等高。
+     大声纹在任意暂停下冻结；小音轨仅在【转写态】下冻结显示（未转写时它本应不可见，不受此规则影响） */
+  #stage.paused .waveform.big .bar{
+    animation:none !important; transform:none !important; opacity:1 !important;
+    height:calc(var(--wf-max-h, 92%) * 0.0833) !important;
+  }
+  #stage.paused.transcribing .waveform.small .bar{
+    animation:none !important; transform:none !important; opacity:1 !important;
     height:calc(var(--wf-max-h, 92%) * 0.0833) !important;
   }
 
@@ -181,8 +198,11 @@
         </div>
       </div>
 
-      <!-- 声纹（录音态：大尺寸居中显示；转写态：向下移动并缩小，居中展示于底部操作栏上方24px处） -->
-      <div class="waveform" id="waveform"></div>
+      <!-- 声纹：拆为两个独立元素，各自固定位置。
+           大声纹(big)：录音态居中大尺寸，点转写后就地渐隐消失；
+           转写音轨(small)：开启转写后在底部操作栏上方原地淡入出现 -->
+      <div class="waveform big" id="waveformBig"></div>
+      <div class="waveform small" id="waveformSmall"></div>
 
       <!-- 底部操作栏（唯一实例）：转写⇢收起转写 锚定距屏幕左侧62px，点击转写后从该位置向右展开翻译/字体按钮；
            计时器水平居中，暂停+结束按钮锚定距屏幕右侧62px，两者转写前后完全保持不变；
@@ -249,26 +269,39 @@
   }
   window.addEventListener('resize', fit); fit();
 
-  /* ---------- 生成大声波竖条：纵向渐变色条 + 正弦振幅包络（中间高、两侧低）+ CSS 关键帧持续律动，
-     容器整体已通过 mask 在两端做透明度渐隐 ---------- */
-  const wf = document.getElementById('waveform');
-  // 条数从114增加到135：使转写态（条宽3px、间距8px）总宽约1477px贴近容器1480px，
-  // 消除两端空白，同时不影响未开启转写时的大声纹外观（本身已超出容器宽度被裁剪，条数增加仅增加被裁剪部分）
+  /* ---------- 生成声波竖条：纵向渐变色条 + 正弦振幅包络（中间高、两侧低）+ CSS 关键帧持续律动，
+     容器整体已通过 mask 在两端做透明度渐隐。两个声纹容器（大声纹/转写音轨）各生成一套 ---------- */
+  const wfBig = document.getElementById('waveformBig');
+  const wfSmall = document.getElementById('waveformSmall');
+  // 条数从114增加到135：使转写态（条宽3px、间距5px）总宽约1075px贴近容器1080px，
+  // 消除两端空白；对大声纹同样生成135根（本身超出容器宽度被裁剪，仅增加被裁剪部分）
   const BAR_COUNT = 135;
-  let maxBarH = 0; // 记录所有声纹条中最高的静态高度（波动幅度的最高点）
-  for(let i=0;i<BAR_COUNT;i++){
-    const b = document.createElement('div');
-    b.className = 'bar';
-    const env = Math.sin((i/(BAR_COUNT-1))*Math.PI); // 0~1，中间高两侧低
-    const h = 14 + env*78*(0.45+Math.random()*0.55); // 14%~92%（相对容器高度）
-    if(h>maxBarH) maxBarH = h;
-    b.style.height = h.toFixed(0) + '%';
-    b.style.animationDelay = (-(Math.random()*1)).toFixed(2) + 's';
-    b.style.animationDuration = (0.7+Math.random()*0.7).toFixed(2) + 's';
-    wf.appendChild(b);
+  function buildBars(container){
+    const isSmall = container.classList.contains('small');
+    let maxBarH = 0; // 记录所有声纹条中最高的静态高度（波动幅度的最高点）
+    for(let i=0;i<BAR_COUNT;i++){
+      const b = document.createElement('div');
+      b.className = 'bar';
+      const env = Math.sin((i/(BAR_COUNT-1))*Math.PI); // 0~1，中间高两侧低
+      const h = 14 + env*78*(0.45+Math.random()*0.55); // 14%~92%（相对容器高度）
+      if(h>maxBarH) maxBarH = h;
+      b.style.height = h.toFixed(0) + '%';
+      if(isSmall){
+        // 小音轨：容器整体淡入（不逐根），律动周期随机形成错落感
+        b.style.setProperty('--wave-dur', (0.7+Math.random()*0.7).toFixed(2) + 's');
+        b.style.animationDelay = (-(Math.random()*1)).toFixed(2) + 's';
+      }else{
+        // 大声纹：常态持续律动，沿用随机延迟/周期形成错落感
+        b.style.animationDelay = (-(Math.random()*1)).toFixed(2) + 's';
+        b.style.animationDuration = (0.7+Math.random()*0.7).toFixed(2) + 's';
+      }
+      container.appendChild(b);
+    }
+    // 将波动最高点写入 CSS 变量，供暂停态计算「等高线条＝最高点的一半」使用
+    container.style.setProperty('--wf-max-h', maxBarH.toFixed(0) + '%');
   }
-  // 将波动最高点写入 CSS 变量，供暂停态计算「等高线条＝最高点的一半」使用
-  wf.style.setProperty('--wf-max-h', maxBarH.toFixed(0) + '%');
+  buildBars(wfBig);
+  buildBars(wfSmall);
 
   /* ---------- 转写文本数据 ---------- */
   const segments = [
